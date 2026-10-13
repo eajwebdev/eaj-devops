@@ -10,6 +10,7 @@ import { ConnectionPanel } from '@/components/project/connection-panel';
 import { RunnerCommandList, WorkspaceList } from '@/components/project/runner-activity';
 import { ScanProgress } from '@/components/project/scan-progress';
 import { StackProfile } from '@/components/project/stack-profile';
+import { ToolsPanel, type ProjectToolView } from '@/components/project/tools-panel';
 import { StatusPill } from '@/components/status-pill';
 import { Button } from '@/components/ui/button';
 import {
@@ -40,14 +41,15 @@ interface ProjectShowProps {
     runners: LocalRunner[];
     commands: RunnerCommand[];
     workspaces: Workspace[];
+    tools: ProjectToolView[];
     can: { update: boolean; delete: boolean };
 }
 
 const ACTIVE = ['queued', 'claimed'];
 
-export default function ProjectShow({ project, events: initialEvents, stats, runner, runners, commands, workspaces, can }: ProjectShowProps) {
+export default function ProjectShow({ project, events: initialEvents, stats, runner, runners, commands, workspaces, tools, can }: ProjectShowProps) {
     const { errors } = usePage<SharedData & { errors: Record<string, string> }>().props;
-    const reload = useDebouncedReload(['project', 'stats', 'runner', 'commands', 'workspaces'], 400);
+    const reload = useDebouncedReload(['project', 'stats', 'runner', 'commands', 'workspaces', 'tools'], 400);
     const events = useEventFeed(initialEvents, { max: 40, filter: (e) => e.project_id === project.id, onIncoming: reload });
     const connection = project.connection;
     const status = connection ? connectionStatus[connection.status] : null;
@@ -169,6 +171,10 @@ export default function ProjectShow({ project, events: initialEvents, stats, run
                             <ConnectionPanel project={project} runner={runner} runners={runners} busy={active !== null} canUpdate={can.update} />
                         </Panel>
                         <Panel title="Code index">{connection && <CodeIndexPanel projectSlug={project.slug} connection={connection} />}</Panel>
+                        <Panel title="Engineering tools">
+                            <ToolsPanel projectSlug={project.slug} tools={tools} canUpdate={can.update} />
+                            {errors.tools && <p className="text-danger mt-2 text-xs">{errors.tools}</p>}
+                        </Panel>
                     </div>
                 </div>
 

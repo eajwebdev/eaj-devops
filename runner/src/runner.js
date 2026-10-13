@@ -6,7 +6,9 @@ import { gitState } from './git-state.js';
 import { indexFile, listFiles } from './indexer.js';
 import { assertAllowedProjectPath, RunnerError } from './paths.js';
 import { scanProject } from './scanner/scan.js';
-import { checkpointWorkspace, createWorkspace, removeWorkspace, resetWorkspace } from './workspace.js';
+import { runTool } from './tools/run.js';
+import { checkpointWorkspace, createWorkspace, pushWorkspace, removeWorkspace, resetWorkspace } from './workspace.js';
+import { applyWorkspaceChanges, readWorkspaceFiles, workspaceDiff } from './workspace-files.js';
 
 const HEARTBEAT_MS = 15_000;
 const IDLE_POLL_MS = 2_000;
@@ -16,7 +18,7 @@ const INDEX_CHUNK = 400;
 /**
  * @typedef {import('./config.js').RunnerConfig} RunnerConfig
  * @typedef {import('./config.js').CommandOutcome} CommandOutcome
- * @typedef {{ id: string, type: string, payload: Record<string, any>, progress: (message: string) => Promise<void> }} CommandContext
+ * @typedef {{ id: string, type: string, payload: Record<string, any>, progress: (message: string) => Promise<void>, signal: AbortSignal }} CommandContext
  */
 
 /**
@@ -42,6 +44,9 @@ export class Runner {
         this.stopped = false;
         /** @type {ReturnType<typeof setInterval> | undefined} */
         this.heartbeatTimer = undefined;
+        /** Stops the command in progress: Stop AI (Plan §57) or the Studio cancelling it. */
+        /** @type {AbortController | null} */
+        this.current = null;
     }
 
     /**
@@ -99,6 +104,7 @@ export class Runner {
                 capabilities: Object.keys(HANDLERS),
             });
             this.halted = response.halted;
+            if (this.halted) this.current?.abort();
         } catch (error) {
             if (error instanceof ApiError && error.status === 401) this.stop();
         }
@@ -128,18 +134,24 @@ export class Runner {
             if (!handler) throw new RunnerError('UNKNOWN_COMMAND', `This runner (v${RUNNER_VERSION}) does not support "${command.type}".`);
 
             this.log(`→ ${command.type} ${command.id}`);
+            const controller = new AbortController();
+            this.current = controller;
             const result = await handler.call(this, {
                 id: command.id,
                 type: command.type,
                 payload,
+                signal: controller.signal,
                 progress: async (message) => {
-                    await this.client.progress(command.id, message).catch(() => {});
+                    const answer = await this.client.progress(command.id, message).catch(() => null);
+                    if (answer?.cancel) controller.abort();
                 },
             });
             outcome = { status: 'succeeded', result };
         } catch (error) {
             const e = /** @type {Error & { code?: string }} */ (error);
             outcome = { status: 'failed', error: { code: e.code ?? 'RUNNER_ERROR', message: e.message.slice(0, 2000) } };
+        } finally {
+            this.current = null;
         }
 
         this.log(`${outcome.status === 'succeeded' ? '✓' : '✗'} ${command.type} ${command.id} (${Date.now() - started} ms)${outcome.error ? ` — ${outcome.error.message}` : ''}`);
@@ -177,7 +189,7 @@ export class Runner {
     }
 
     get ctx() {
-        return { allowedRoots: this.config.allowedRoots, workspacesRoot: this.config.workspacesRoot };
+        return { allowedRoots: this.config.allowedRoots, workspacesRoot: this.config.workspacesRoot, toolPaths: this.config.toolPaths };
     }
 }
 
@@ -186,7 +198,7 @@ const HANDLERS = {
     async 'project.scan'({ payload, progress }) {
         const folder = assertAllowedProjectPath(payload.project_path, this.config.allowedRoots);
 
-        return scanProject(folder, { workspacesRoot: this.config.workspacesRoot, progress });
+        return scanProject(folder, { workspacesRoot: this.config.workspacesRoot, progress, toolPaths: this.config.toolPaths });
     },
 
     async 'project.index'({ id, payload, progress }) {
@@ -237,12 +249,36 @@ const HANDLERS = {
         return checkpointWorkspace(/** @type {any} */ (payload), this.ctx);
     },
 
+    async 'workspace.push'({ payload, progress }) {
+        await progress('Publishing the reviewed task branch to GitHubâ€¦');
+
+        return pushWorkspace(/** @type {any} */ (payload), this.ctx);
+    },
+
     async 'workspace.reset'({ payload }) {
         return resetWorkspace(/** @type {any} */ (payload), this.ctx);
     },
 
     async 'workspace.remove'({ payload }) {
         return removeWorkspace(/** @type {any} */ (payload), this.ctx);
+    },
+
+    async 'workspace.read'({ payload }) {
+        return readWorkspaceFiles(/** @type {any} */ (payload), this.ctx);
+    },
+
+    async 'workspace.apply'({ payload, progress }) {
+        await progress(`Applying ${Array.isArray(payload.changes) ? payload.changes.length : 0} file change(s)…`);
+
+        return applyWorkspaceChanges(/** @type {any} */ (payload), this.ctx);
+    },
+
+    async 'workspace.diff'({ payload }) {
+        return workspaceDiff(/** @type {any} */ (payload), this.ctx);
+    },
+
+    async 'tool.run'({ payload, progress, signal }) {
+        return runTool(/** @type {any} */ (payload), this.ctx, { signal, progress });
     },
 };
 

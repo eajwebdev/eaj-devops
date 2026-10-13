@@ -79,9 +79,14 @@ class ProjectTest extends TestCase
             ->post('/projects', $this->validPayload(['key' => 'NEW', 'local_path' => 'C:\\laragon\\www\\..\\..\\Windows']))
             ->assertSessionHasErrors('local_path');
 
-        // GitHub import is not built yet (Phase 10), so it cannot be selected.
+        // GitHub import exists (Phase 10): it needs a repository chosen, not a folder path.
         $this->actingAs($user)
             ->post('/projects', $this->validPayload(['key' => 'GH', 'connection_type' => 'github']))
+            ->assertSessionHasErrors('github_repository');
+
+        // Types whose engine does not exist yet still cannot be selected.
+        $this->actingAs($user)
+            ->post('/projects', $this->validPayload(['key' => 'NEW', 'connection_type' => 'new']))
             ->assertSessionHasErrors('connection_type');
     }
 

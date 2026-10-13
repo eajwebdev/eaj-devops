@@ -113,6 +113,7 @@ class RunnerGateway
             ])->save();
 
             $this->record($command, 'runner.command.started');
+            $this->results->claimed($command);
 
             return $command;
         });
@@ -141,19 +142,48 @@ class RunnerGateway
     /**
      * Real step text from the PC (Plan §7.7 "Detecting framework… Laravel 10").
      * Each message also extends the lease: the runner is demonstrably alive.
+     *
+     * @return bool whether the runner should stop the command (cancel requested)
      */
-    public function progress(RunnerCommand $command, string $message): void
+    public function progress(RunnerCommand $command, string $message): bool
     {
         if ($command->status !== RunnerCommandStatus::Claimed) {
-            return;
+            return $command->status->isTerminal();
         }
 
-        $command->forceFill([
-            'progress' => Str::limit($this->redactor->redactText($message), 500, ''),
-            'lease_expires_at' => now()->addSeconds($command->type->leaseSeconds()),
-        ])->save();
+        DB::transaction(function () use ($command, $message) {
+            $command->forceFill([
+                'progress' => Str::limit($this->redactor->redactText($message), 500, ''),
+                'lease_expires_at' => now()->addSeconds($command->type->leaseSeconds()),
+            ])->save();
 
-        $this->record($command, 'runner.command.progress');
+            // Tool runs report their own, richer progress event.
+            $command->type === RunnerCommandType::ToolRun
+                ? $this->results->progressed($command, $message)
+                : $this->record($command, 'runner.command.progress');
+        });
+
+        return $command->cancel_requested_at !== null;
+    }
+
+    /**
+     * A queued command is cancelled at once; a running one is told to stop on its
+     * next progress report (the runner then kills the process tree, §57).
+     */
+    public function cancel(RunnerCommand $command, ?User $by = null, string $reason = 'Cancelled'): void
+    {
+        DB::transaction(function () use ($command, $by, $reason) {
+            $locked = RunnerCommand::whereKey($command->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->status === RunnerCommandStatus::Queued) {
+                $this->markCancelled($locked, $reason, $by);
+            } elseif ($locked->status === RunnerCommandStatus::Claimed && ! $locked->cancel_requested_at) {
+                $locked->forceFill(['cancel_requested_at' => now()])->save();
+                $this->record($locked, 'runner.command.cancel_requested', $by);
+            }
+
+            $command->setRawAttributes($locked->getAttributes(), true);
+        });
     }
 
     /**
@@ -287,6 +317,14 @@ class RunnerGateway
                         return;
                     }
 
+                    // Stopped by its owner while the runner was away: never offer it again.
+                    if ($command->cancel_requested_at) {
+                        $this->markCancelled($command, 'Cancelled while the runner was not responding.');
+                        $counts['failed']++;
+
+                        return;
+                    }
+
                     if ($command->attempts < $command->max_attempts) {
                         $command->forceFill(['status' => RunnerCommandStatus::Queued, 'lease_expires_at' => null])->save();
                         $this->record($command, 'runner.command.requeued');
@@ -367,6 +405,19 @@ class RunnerGateway
 
             $this->events->record('runner.revoked', ['runner' => ['id' => $runner->id, 'name' => $runner->name]], organization: $runner->organization, actor: $by);
         });
+    }
+
+    private function markCancelled(RunnerCommand $command, string $reason, ?User $by = null): void
+    {
+        $command->forceFill([
+            'status' => RunnerCommandStatus::Cancelled,
+            'error_code' => 'CANCELLED',
+            'error_message' => Str::limit($reason, 2000),
+            'completed_at' => now(),
+            'lease_expires_at' => null,
+        ])->save();
+        $this->record($command, 'runner.command.failed', $by);
+        $this->results->failed($command);
     }
 
     private function record(RunnerCommand $command, string $type, ?User $actor = null): void

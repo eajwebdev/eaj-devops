@@ -38,6 +38,19 @@ export default [
         },
     },
     {
+        // The EAJ Local Runner is plain Node.js (ESM), not browser code.
+        files: ['runner/**/*.js'],
+        languageOptions: {
+            globals: {
+                ...globals.node,
+            },
+        },
+        rules: {
+            // `const { at, ...rest } = x` is how the runner drops a field.
+            '@typescript-eslint/no-unused-vars': ['error', { ignoreRestSiblings: true }],
+        },
+    },
+    {
         ignores: ['vendor', 'node_modules', 'public', 'bootstrap/ssr', 'tailwind.config.js'],
     },
     prettier, // Turn off all rules that might conflict with Prettier

@@ -65,7 +65,14 @@ export function ImpactPanel({ impact, analyzedAt }: { impact: TaskImpact; analyz
                 </div>
                 <div>
                     <p className="eyebrow">Estimated cost</p>
-                    <p className="text-muted-foreground text-sm">Shown once model pricing is configured</p>
+                    <p className="text-heading tabular text-sm">
+                        {impact.estimated_cost
+                            ? `â‰ˆ $${impact.estimated_cost.amount.toFixed(4)} ${impact.estimated_cost.currency}`
+                            : 'Add model pricing to estimate'}
+                    </p>
+                    {impact.estimated_cost && impact.estimated_cost.priced_models < impact.estimated_cost.total_models && (
+                        <p className="text-warning text-xs">Partial estimate; some routed models are unpriced.</p>
+                    )}
                 </div>
                 <div>
                     <p className="eyebrow mb-1">Recommended team</p>

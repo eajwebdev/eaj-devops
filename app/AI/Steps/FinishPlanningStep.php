@@ -13,10 +13,11 @@ use App\Workflow\StepContext;
 use App\Workflow\StepResult;
 
 /**
- * Last step of an orchestrated plan. Implementation needs the engineering tools
- * of Phase 7, so the task is not left in Planning (which claims work is
- * happening, G6): it returns to Ready with its plan, or is blocked when a
- * specialist needs clarification from the owner.
+ * Last step of an orchestrated plan. Agents do not change code yet, so the
+ * task is not left in Planning (which claims work is happening, G6): it
+ * returns to Ready with its plan, or is blocked when a specialist needs
+ * clarification from the owner. The quality gates (Phase 7) check whatever
+ * is in the task workspace.
  */
 class FinishPlanningStep implements StepHandler
 {
@@ -46,7 +47,7 @@ class FinishPlanningStep implements StepHandler
         if ($task->refresh()->status === TaskStatus::Planning) {
             $needInput->isNotEmpty()
                 ? $this->tasks->transition($task, TaskStatus::Blocked, 'system', null, 'AI plan needs your input: '.$needInput->join(', ').' could not plan without clarification. See the AI plan on the task.', TaskStatus::Planning)
-                : $this->tasks->transition($task, TaskStatus::Ready, 'system', null, "AI plan ready from {$results->count()} specialists. Implementation needs the engineering tools (Phase 7).", TaskStatus::Planning);
+                : $this->tasks->transition($task, TaskStatus::Ready, 'system', null, "AI plan ready from {$results->count()} specialists. Agents do not change code yet; quality checks run on the task workspace.", TaskStatus::Planning);
         }
 
         return new StepResult(output: ['specialists' => $results->count(), 'needs_input' => $needInput->all()]);

@@ -27,6 +27,7 @@ interface Run {
     attempt: number;
     max_attempts: number;
     total_tokens: number;
+    total_cost: number;
     token_budget: number;
     model: string | null;
     started_at: string | null;
@@ -55,6 +56,9 @@ interface ModelDefinition {
     display_name: string;
     tier: string;
     max_context: number | null;
+    input_cost: number | null;
+    cached_input_cost: number | null;
+    output_cost: number | null;
     enabled: boolean;
 }
 
@@ -291,7 +295,16 @@ function RouteRow({
 }
 
 function NewModel({ tiers }: { tiers: Props['tiers'] }) {
-    const form = useForm({ provider: '', model_key: '', display_name: '', tier: 'standard', max_context: null as number | null });
+    const form = useForm({
+        provider: '',
+        model_key: '',
+        display_name: '',
+        tier: 'standard',
+        max_context: null as number | null,
+        input_cost: null as number | null,
+        cached_input_cost: null as number | null,
+        output_cost: null as number | null,
+    });
     function submit(event: FormEvent) {
         event.preventDefault();
         form.post(route('models.store'), { preserveScroll: true, onSuccess: () => form.reset() });
@@ -341,6 +354,53 @@ function NewModel({ tiers }: { tiers: Props['tiers'] }) {
     );
 }
 
+function ModelPricing({ model, canManage }: { model: ModelDefinition; canManage: boolean }) {
+    const form = useForm({
+        input_cost: model.input_cost as number | null,
+        cached_input_cost: model.cached_input_cost as number | null,
+        output_cost: model.output_cost as number | null,
+        enabled: model.enabled,
+    });
+    function submit(event: FormEvent) {
+        event.preventDefault();
+        form.patch(route('models.update', model.id), { preserveScroll: true });
+    }
+    return (
+        <form
+            onSubmit={submit}
+            className="border-border grid gap-3 border-b py-3 last:border-0 md:grid-cols-[minmax(12rem,1fr)_repeat(3,minmax(8rem,0.65fr))_auto] md:items-end"
+        >
+            <div>
+                <p className="text-sm font-medium">{model.display_name}</p>
+                <p className="text-muted-foreground font-mono text-[0.68rem]">
+                    {model.provider} · {model.model_key}
+                </p>
+            </div>
+            {(['input_cost', 'cached_input_cost', 'output_cost'] as const).map((field) => (
+                <label key={field} className="space-y-1 text-xs">
+                    <span className="text-muted-foreground">
+                        {field === 'input_cost' ? 'Input' : field === 'cached_input_cost' ? 'Cached input' : 'Output'} / 1M
+                    </span>
+                    <Input
+                        type="number"
+                        min="0"
+                        step="0.000001"
+                        value={form.data[field] ?? ''}
+                        disabled={!canManage}
+                        placeholder="USD"
+                        onChange={(e) => form.setData(field, e.target.value === '' ? null : Number(e.target.value))}
+                    />
+                </label>
+            ))}
+            {canManage && (
+                <Button type="submit" size="sm" disabled={form.processing || !form.isDirty}>
+                    Save price
+                </Button>
+            )}
+        </form>
+    );
+}
+
 export default function AgentTeam({ agents, routes, models, runs, tiers, can }: Props) {
     const { organization } = usePage<SharedData>().props;
     return (
@@ -367,6 +427,14 @@ export default function AgentTeam({ agents, routes, models, runs, tiers, can }: 
                         </span>
                     }
                 >
+                    <div className="border-border mb-4 border-b pb-4">
+                        <p className="text-muted-foreground mb-1 text-xs">
+                            Pricing in USD per one million tokens. Changes apply only to future usage.
+                        </p>
+                        {models.map((model) => (
+                            <ModelPricing key={model.id} model={model} canManage={can.manage} />
+                        ))}
+                    </div>
                     {routes.map((item) => (
                         <RouteRow key={item.id} item={item} models={models} tiers={tiers} canManage={can.manage} />
                     ))}
@@ -391,6 +459,7 @@ export default function AgentTeam({ agents, routes, models, runs, tiers, can }: 
                                         <th className="px-3 py-2 font-medium">Model</th>
                                         <th className="px-3 py-2 text-right font-medium">Attempt</th>
                                         <th className="py-2 pl-3 text-right font-medium">Tokens</th>
+                                        <th className="py-2 pl-3 text-right font-medium">Cost</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -423,6 +492,7 @@ export default function AgentTeam({ agents, routes, models, runs, tiers, can }: 
                                                 <td className="py-3 pl-3 text-right font-mono">
                                                     {formatNumber(run.total_tokens)} / {formatNumber(run.token_budget)}
                                                 </td>
+                                                <td className="py-3 pl-3 text-right font-mono">${run.total_cost.toFixed(4)}</td>
                                             </tr>
                                         );
                                     })}

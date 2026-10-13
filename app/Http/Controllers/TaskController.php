@@ -3,12 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Actions\Workspaces\ManageWorkspaces;
+use App\Costs\CostEstimator;
 use App\Enums\Permission;
 use App\Enums\TaskPriority;
 use App\Enums\TaskStatus;
 use App\Enums\TaskType;
 use App\Enums\WorkspaceStatus;
 use App\Http\Presenters\AiPlanPresenter;
+use App\Http\Presenters\DeliveryPresenter;
+use App\Http\Presenters\QualityPresenter;
 use App\Http\Presenters\TaskPresenter;
 use App\Models\Project;
 use App\Models\Task;
@@ -28,7 +31,10 @@ use Inertia\Response;
  */
 class TaskController extends Controller
 {
-    public function __construct(private readonly TaskService $tasks) {}
+    public function __construct(
+        private readonly TaskService $tasks,
+        private readonly CostEstimator $costs,
+    ) {}
 
     public function store(Request $request, Project $project): RedirectResponse
     {
@@ -64,15 +70,22 @@ class TaskController extends Controller
             'workspace',
             'latestAgentRun.agent.role',
             'latestAgentRun.model',
+            'pullRequests.reviews',
+            'project.githubRepository',
         ]);
         $task->dependencies->each->setRelation('project', $project);
         $task->dependents->each->setRelation('project', $project);
 
         $connection = $project->connection;
 
+        $presented = TaskPresenter::detail($task);
+        if ($presented['impact']) {
+            $presented['impact']['estimated_cost'] = $this->costs->forTask($task);
+        }
+
         return Inertia::render('tasks/show', [
             'project' => $project->only('id', 'key', 'name', 'slug'),
-            'task' => TaskPresenter::detail($task),
+            'task' => $presented,
             'options' => TaskBoardController::options(),
             'candidates' => fn () => $project->tasks()
                 ->whereKeyNot($task->id)
@@ -82,8 +95,41 @@ class TaskController extends Controller
                 ->get(['id', 'number', 'title', 'status'])
                 ->map(fn (Task $t) => ['number' => $t->number, 'key' => "{$project->key}-{$t->number}", 'title' => $t->title, 'status' => $t->status->value]),
             'aiPlan' => AiPlanPresenter::forTask($task),
+            'quality' => QualityPresenter::forTask($task),
+            'delivery' => DeliveryPresenter::forTask($task),
+            'github' => $project->githubRepository ? [
+                'repository' => [
+                    'full_name' => $project->githubRepository->full_name,
+                    'html_url' => $project->githubRepository->html_url,
+                    'default_branch' => $project->githubRepository->default_branch,
+                ],
+                'workspace' => $task->workspace ? [
+                    'branch' => $task->workspace->branch,
+                    'reviewed_sha' => $task->workspace->last_checkpoint_sha,
+                    'published_sha' => $task->workspace->published_sha,
+                    'published_at' => $task->workspace->published_at?->toIso8601String(),
+                ] : null,
+                'pull_requests' => $task->pullRequests->sortByDesc('id')->map(fn ($pull) => [
+                    'id' => $pull->id,
+                    'number' => $pull->github_number,
+                    'title' => $pull->title,
+                    'state' => $pull->state,
+                    'draft' => $pull->draft,
+                    'head_sha' => $pull->head_sha,
+                    'base_sha' => $pull->base_sha,
+                    'html_url' => $pull->html_url,
+                    'merged_at' => $pull->merged_at?->toIso8601String(),
+                    'reviews' => $pull->reviews->map(fn ($review) => [
+                        'reviewer' => $review->reviewer_login,
+                        'state' => $review->state,
+                        'commit_id' => $review->commit_id,
+                        'submitted_at' => $review->submitted_at?->toIso8601String(),
+                    ])->values(),
+                ])->values(),
+            ] : null,
             'workspaceReady' => [
                 'runner' => (bool) $connection?->runner && ! $connection->runner->revoked_at,
+                'runner_online' => (bool) $connection?->runner?->isOnline(),
                 'git' => (bool) $connection?->git_enabled,
             ],
             'can' => [

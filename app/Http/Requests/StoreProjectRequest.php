@@ -53,6 +53,10 @@ class StoreProjectRequest extends FormRequest
                 'required_if:connection_type,local', 'nullable', 'string', 'max:1024',
                 'regex:/^(?:[A-Za-z]:[\\\\\/]|\/)[^\x00<>"|?*]*$/',
             ],
+            'github_repository' => [
+                'required_if:connection_type,github', 'nullable', 'string', 'max:200',
+                'regex:#^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$#',
+            ],
         ];
     }
 
@@ -80,6 +84,7 @@ class StoreProjectRequest extends FormRequest
             'local_path.regex' => 'Enter a full folder path, e.g. C:\\laragon\\www\\booking-saas.',
             'local_path.required_if' => 'Enter the folder path of the local project.',
             'connection_type.in' => 'This connection type is not available yet.',
+            'github_repository.required_if' => 'Choose a GitHub repository to import.',
             'local_runner_id.exists' => 'Choose an active runner from this organization.',
         ];
     }

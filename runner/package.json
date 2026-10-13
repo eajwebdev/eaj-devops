@@ -1,6 +1,6 @@
 {
     "name": "@eaj/local-runner",
-    "version": "0.1.0",
+    "version": "0.3.0",
     "description": "EAJ Local Runner — the only component that touches local project files and Git for EAJ AI Dev Studio.",
     "private": true,
     "type": "module",

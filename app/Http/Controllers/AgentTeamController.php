@@ -94,6 +94,9 @@ class AgentTeamController extends Controller
             'display_name' => $model->display_name,
             'tier' => $model->tier->value,
             'max_context' => $model->max_context,
+            'input_cost' => $model->input_cost !== null ? (float) $model->input_cost : null,
+            'cached_input_cost' => $model->cached_input_cost !== null ? (float) $model->cached_input_cost : null,
+            'output_cost' => $model->output_cost !== null ? (float) $model->output_cost : null,
             'enabled' => $model->enabled,
         ]);
 
@@ -172,6 +175,9 @@ class AgentTeamController extends Controller
             'display_name' => ['required', 'string', 'max:120'],
             'tier' => ['required', Rule::enum(ModelTier::class)],
             'max_context' => ['nullable', 'integer', 'min:1000'],
+            'input_cost' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'cached_input_cost' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'output_cost' => ['nullable', 'numeric', 'min:0', 'max:100000'],
         ]);
 
         if ($organization->aiModels()->where('provider', $data['provider'])->where('model_key', $data['model_key'])->exists()) {
@@ -183,6 +189,29 @@ class AgentTeamController extends Controller
         $this->audit->log('ai_model.created', $request->user(), $organization, subject: $model, metadata: ['provider' => $model->provider, 'model_key' => $model->model_key]);
 
         return back()->with('status', 'Model registered for routing.');
+    }
+
+    public function updateModel(Request $request, AiModel $aiModel): RedirectResponse
+    {
+        $organization = app(CurrentOrganization::class)->get();
+        abort_unless($request->user()->hasPermissionIn($organization, Permission::AgentsManage), 403);
+        $data = $request->validate([
+            'input_cost' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'cached_input_cost' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'output_cost' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'enabled' => ['required', 'boolean'],
+        ]);
+
+        DB::transaction(function () use ($aiModel, $data, $request, $organization) {
+            $aiModel->forceFill($data)->save();
+            $this->events->record('ai_model.pricing_updated', [
+                'model_id' => $aiModel->id,
+                'priced' => $aiModel->input_cost !== null && $aiModel->cached_input_cost !== null && $aiModel->output_cost !== null,
+            ], organization: $organization, actor: $request->user());
+            $this->audit->log('ai_model.pricing_updated', $request->user(), $organization, subject: $aiModel, metadata: $aiModel->only('input_cost', 'cached_input_cost', 'output_cost', 'enabled'));
+        });
+
+        return back()->with('status', 'Model pricing updated. Historical usage keeps its original price snapshot.');
     }
 
     public function updateRoute(Request $request, ModelRoute $modelRoute): RedirectResponse
@@ -235,6 +264,7 @@ class AgentTeamController extends Controller
             'attempt' => $run->attempt,
             'max_attempts' => $run->max_attempts,
             'total_tokens' => $run->total_tokens,
+            'total_cost' => (float) $run->total_cost,
             'token_budget' => $run->token_budget,
             'model' => $run->model?->display_name,
             'started_at' => $run->started_at?->toIso8601String(),

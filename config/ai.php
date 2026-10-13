@@ -3,6 +3,9 @@
 return [
     'timeout_seconds' => (int) env('AI_TIMEOUT_SECONDS', 90),
     'max_output_tokens' => (int) env('AI_MAX_OUTPUT_TOKENS', 4000),
+    // Implementation answers carry code edits; reviews carry findings.
+    'max_output_tokens_implementation' => (int) env('AI_MAX_OUTPUT_TOKENS_IMPLEMENTATION', 16000),
+    'max_output_tokens_review' => (int) env('AI_MAX_OUTPUT_TOKENS_REVIEW', 6000),
     'max_retry_after_seconds' => (int) env('AI_MAX_RETRY_AFTER_SECONDS', 60),
     'providers' => [
         'openai' => ['label' => 'OpenAI', 'key' => env('OPENAI_API_KEY'), 'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com')],

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 class Organization extends Model
@@ -66,6 +67,16 @@ class Organization extends Model
     public function agentRuns(): HasMany
     {
         return $this->hasMany(AgentRun::class);
+    }
+
+    public function tokenBudgets(): HasMany
+    {
+        return $this->hasMany(TokenBudget::class);
+    }
+
+    public function githubConnection(): HasOne
+    {
+        return $this->hasOne(GithubConnection::class);
     }
 
     public function addMember(User $user, OrganizationRole $role): void

@@ -2,6 +2,7 @@
 
 namespace App\AI\Contracts;
 
+use App\AI\AgentBrief;
 use App\Models\Agent;
 use App\Models\Task;
 use Closure;
@@ -16,4 +17,12 @@ interface AgentRunnerInterface
      * @return array<string, mixed>
      */
     public function run(Task $task, Agent $agent, string $purpose, string $idempotencyKey, ?int $workflowStepId = null, ?Closure $heartbeat = null): array;
+
+    /**
+     * Run a brief (implementation, review…) the same durable, resumable way.
+     *
+     * @param  Closure(): void|null  $heartbeat
+     * @return array<string, mixed>
+     */
+    public function runBrief(Task $task, Agent $agent, AgentBrief $brief, string $idempotencyKey, ?int $workflowStepId = null, ?Closure $heartbeat = null): array;
 }

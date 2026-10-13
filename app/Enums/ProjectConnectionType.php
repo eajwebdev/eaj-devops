@@ -20,11 +20,10 @@ enum ProjectConnectionType: string
     }
 
     /**
-     * Only connection types whose engine exists can be selected. GitHub arrives
-     * in Phase 10; archive import and new-project scaffolding come later.
+     * Only connection types whose engine exists can be selected.
      */
     public function isAvailable(): bool
     {
-        return $this === self::Local;
+        return in_array($this, [self::Local, self::GitHub], true);
     }
 }

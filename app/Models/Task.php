@@ -112,6 +112,17 @@ class Task extends Model
         return $this->hasOne(AgentRun::class)->latestOfMany();
     }
 
+    /** @return HasMany<ToolRun, $this> */
+    public function toolRuns(): HasMany
+    {
+        return $this->hasMany(ToolRun::class);
+    }
+
+    public function pullRequests(): HasMany
+    {
+        return $this->hasMany(GithubPullRequest::class);
+    }
+
     /** "BOOK-12" — also the workspace task key and branch name part. */
     public function key(): string
     {

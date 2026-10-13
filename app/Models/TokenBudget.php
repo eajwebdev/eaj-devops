@@ -11,7 +11,11 @@ class TokenBudget extends Model
 
     protected function casts(): array
     {
-        return ['enabled' => 'boolean'];
+        return [
+            'max_cost' => 'decimal:6',
+            'hard_stop' => 'boolean',
+            'enabled' => 'boolean',
+        ];
     }
 
     public function organization(): BelongsTo

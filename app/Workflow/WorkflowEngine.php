@@ -19,6 +19,7 @@ use App\Workflow\Contracts\StepHandler;
 use App\Workflow\Contracts\WorkflowListener;
 use App\Workflow\Exceptions\NonRetryableStepException;
 use App\Workflow\Exceptions\OperationsHaltedException;
+use App\Workflow\Exceptions\StepLimitReachedException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -36,6 +37,8 @@ use Throwable;
  */
 class WorkflowEngine
 {
+    public const MAX_STEPS = 200;
+
     public function __construct(
         private readonly EventRecorder $events,
         private readonly SystemHalt $halt,
@@ -147,6 +150,10 @@ class WorkflowEngine
 
         try {
             $result = $this->resolveHandler($step->name)->handle($step, new StepContext($this, $step));
+        } catch (StepLimitReachedException $e) {
+            $this->failStep($step->id, $e->getMessage(), retryable: false, reason: BlockedReason::LimitReached);
+
+            return;
         } catch (NonRetryableStepException $e) {
             $this->failStep($step->id, $e->getMessage(), retryable: false);
 
@@ -191,6 +198,8 @@ class WorkflowEngine
                 'commit_sha' => $result->commitSha,
             ]);
 
+            $this->appendSteps($workflow, $result->append);
+
             $this->advanceFrom($workflow, $step);
         });
     }
@@ -199,9 +208,9 @@ class WorkflowEngine
      * Retry with back-off while attempts remain, then BLOCK and ask the owner.
      * The order is always: retry → fall back → pause and ask (§2.6).
      */
-    public function failStep(int $stepId, string $error, bool $retryable = true, bool $stalled = false): void
+    public function failStep(int $stepId, string $error, bool $retryable = true, bool $stalled = false, ?BlockedReason $reason = null): void
     {
-        DB::transaction(function () use ($stepId, $error, $retryable, $stalled) {
+        DB::transaction(function () use ($stepId, $error, $retryable, $stalled, $reason) {
             [$step, $workflow] = $this->lockStep($stepId);
 
             if ($step->status !== StepStatus::Running) {
@@ -250,7 +259,7 @@ class WorkflowEngine
 
             $this->block(
                 $workflow,
-                $retryable ? BlockedReason::LimitReached : BlockedReason::NeedsDecision,
+                $reason ?? ($retryable ? BlockedReason::LimitReached : BlockedReason::NeedsDecision),
                 $error,
             );
         });
@@ -432,6 +441,38 @@ class WorkflowEngine
         $class = config('eaj.workflow_listeners', [])[$workflow->type] ?? null;
 
         return $class ? app($class) : null;
+    }
+
+    /**
+     * Grow a running workflow (fix and review cycles, §48.10). Only from a step's
+     * result, inside the transaction that completes it, so a crash cannot add a
+     * cycle twice; the hard cap keeps a loop from running forever (G5).
+     *
+     * @param  list<array{name: string, input?: array<string, mixed>}>  $steps
+     */
+    private function appendSteps(Workflow $workflow, array $steps): void
+    {
+        if ($steps === []) {
+            return;
+        }
+
+        $last = (int) $workflow->steps()->max('position');
+
+        if ($last + count($steps) >= self::MAX_STEPS) {
+            throw new InvalidArgumentException("Workflow {$workflow->id} would exceed ".self::MAX_STEPS.' steps.');
+        }
+
+        foreach (array_values($steps) as $i => $step) {
+            WorkflowStep::forceCreate([
+                'workflow_id' => $workflow->id,
+                'position' => $last + 1 + $i,
+                'name' => $step['name'],
+                'status' => StepStatus::Pending,
+                'input' => $step['input'] ?? null,
+            ]);
+        }
+
+        $this->record($workflow, 'workflow.steps.appended', null, ['steps' => array_column($steps, 'name')]);
     }
 
     private function advanceFrom(Workflow $workflow, WorkflowStep $step): void

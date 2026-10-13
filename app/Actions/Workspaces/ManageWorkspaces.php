@@ -4,6 +4,7 @@ namespace App\Actions\Workspaces;
 
 use App\Enums\RunnerCommandType;
 use App\Enums\WorkspaceStatus;
+use App\Models\GithubRepository;
 use App\Models\Project;
 use App\Models\RepositoryWorkspace;
 use App\Models\Task;
@@ -85,6 +86,22 @@ class ManageWorkspaces
             'task_key' => $workspace->task_key,
             'step' => $step,
         ], $workspace->project, $user, "checkpoint:{$workspace->id}:{$step}");
+    }
+
+    public function publish(RepositoryWorkspace $workspace, GithubRepository $repository, ?User $user = null): void
+    {
+        $this->requireReady($workspace);
+
+        if (! $workspace->last_checkpoint_sha) {
+            throw new RunnerUnavailableException("Workspace {$workspace->task_key} has no reviewed checkpoint to publish.");
+        }
+
+        $this->gateway->dispatch($workspace->runner, RunnerCommandType::WorkspacePush, [
+            'workspace_id' => $workspace->id,
+            'workspace_path' => $workspace->path,
+            'branch' => $workspace->branch,
+            'repository_full_name' => $repository->full_name,
+        ], $workspace->project, $user, "publish:{$workspace->id}:{$workspace->last_checkpoint_sha}");
     }
 
     public function resetToCheckpoint(RepositoryWorkspace $workspace, string $sha, ?User $user = null): void

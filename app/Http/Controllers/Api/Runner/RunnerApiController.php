@@ -75,9 +75,9 @@ class RunnerApiController extends Controller
     public function progress(Request $request, string $command): JsonResponse
     {
         $data = $request->validate(['message' => ['required', 'string', 'max:500']]);
-        $this->gateway->progress($this->command($request, $command), $data['message']);
+        $cancel = $this->gateway->progress($this->command($request, $command), $data['message']);
 
-        return response()->json(['ok' => true]);
+        return response()->json(['ok' => true, 'cancel' => $cancel]);
     }
 
     public function indexChunk(Request $request, string $command): JsonResponse

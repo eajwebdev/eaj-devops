@@ -35,4 +35,14 @@ return [
         ],
     ],
 
+    'github' => [
+        'client_id' => env('GITHUB_CLIENT_ID'),
+        'client_secret' => env('GITHUB_CLIENT_SECRET'),
+        'webhook_secret' => env('GITHUB_WEBHOOK_SECRET'),
+        'authorize_url' => env('GITHUB_AUTHORIZE_URL', 'https://github.com/login/oauth/authorize'),
+        'token_url' => env('GITHUB_TOKEN_URL', 'https://github.com/login/oauth/access_token'),
+        'api_url' => env('GITHUB_API_URL', 'https://api.github.com'),
+        'api_version' => env('GITHUB_API_VERSION', '2026-03-10'),
+    ],
+
 ];

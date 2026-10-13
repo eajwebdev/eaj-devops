@@ -19,6 +19,7 @@ class AgentRun extends Model
             'status' => AgentRunStatus::class,
             'input' => 'array',
             'output' => 'array',
+            'total_cost' => 'decimal:6',
             'started_at' => 'datetime',
             'heartbeat_at' => 'datetime',
             'finished_at' => 'datetime',

@@ -13,6 +13,8 @@ use App\Models\RepositoryWorkspace;
 use App\Models\RunnerCommand;
 use App\Reliability\EventRecorder;
 use App\Security\SecretRedactor;
+use App\Tools\ToolCatalog;
+use App\Tools\ToolRunResults;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 
@@ -25,7 +27,23 @@ class RunnerResultProcessor
     public function __construct(
         private readonly EventRecorder $events,
         private readonly SecretRedactor $redactor,
+        private readonly ToolRunResults $tools,
+        private readonly ToolCatalog $catalog,
     ) {}
+
+    public function claimed(RunnerCommand $command): void
+    {
+        if ($command->type === RunnerCommandType::ToolRun) {
+            $this->tools->claimed($command);
+        }
+    }
+
+    public function progressed(RunnerCommand $command, string $message): void
+    {
+        if ($command->type === RunnerCommandType::ToolRun) {
+            $this->tools->progressed($command, $message);
+        }
+    }
 
     public function succeeded(RunnerCommand $command): void
     {
@@ -51,6 +69,14 @@ class RunnerResultProcessor
                 'removed_at' => now(),
                 'error' => null,
             ]), 'workspace.deleted'),
+            RunnerCommandType::WorkspacePush => $this->workspace($command, fn (RepositoryWorkspace $w, array $r) => $w->forceFill([
+                'published_sha' => $r['sha'] ?? null,
+                'published_at' => now(),
+                'error' => null,
+            ]), 'workspace.published'),
+            RunnerCommandType::ToolRun => $this->tools->succeeded($command),
+            // Read by the waiting workflow step itself.
+            RunnerCommandType::WorkspaceRead, RunnerCommandType::WorkspaceApply, RunnerCommandType::WorkspaceDiff => null,
         };
     }
 
@@ -77,6 +103,14 @@ class RunnerResultProcessor
 
             case RunnerCommandType::WorkspaceRemove:
                 $this->workspace($command, fn (RepositoryWorkspace $w) => $w->forceFill(['status' => WorkspaceStatus::Ready, 'error' => $message]), 'workspace.remove_failed', requireSuccess: false);
+                break;
+
+            case RunnerCommandType::WorkspacePush:
+                $this->workspace($command, fn (RepositoryWorkspace $w) => $w->forceFill(['error' => $message]), 'workspace.publish_failed', requireSuccess: false);
+                break;
+
+            case RunnerCommandType::ToolRun:
+                $this->tools->failed($command);
                 break;
 
             default:
@@ -114,10 +148,14 @@ class RunnerResultProcessor
             'status' => ProjectConnectionStatus::Indexing,
         ])->save();
 
+        // Runners older than 0.2 report no tools; keep the approved set as it is then.
+        $tools = array_key_exists('tools', $result) ? $this->catalog->sync($project, (array) $result['tools']) : null;
+
         $this->events->record('project.scanned', [
             'summary' => $this->summary($stack),
             'git_enabled' => (bool) ($git['enabled'] ?? false),
             'warnings' => count($warnings),
+            'tools' => $tools['tools'] ?? null,
         ], $project);
 
         // Plan §12: Scan → Detect stack → Profile → Build code index → Ready.

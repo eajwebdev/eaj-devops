@@ -8,12 +8,17 @@ use App\AI\SpecialistRunner;
 use App\Models\Agent;
 use App\Models\AgentRun;
 use App\Models\AiModel;
+use App\Models\ChangeSet;
 use App\Models\LocalRunner;
 use App\Models\ModelRoute;
 use App\Models\Organization;
 use App\Models\Project;
+use App\Models\ProjectTool;
+use App\Models\Review;
 use App\Models\Skill;
 use App\Models\Task;
+use App\Models\TokenBudget;
+use App\Models\ToolRun;
 use App\Models\User;
 use App\Models\Workflow;
 use App\Reliability\SystemHalt;
@@ -54,6 +59,11 @@ class AppServiceProvider extends ServiceProvider
             'ai_model' => AiModel::class,
             'model_route' => ModelRoute::class,
             'skill' => Skill::class,
+            'project_tool' => ProjectTool::class,
+            'tool_run' => ToolRun::class,
+            'change_set' => ChangeSet::class,
+            'review' => Review::class,
+            'token_budget' => TokenBudget::class,
         ]);
 
         // Fail loudly in development when a mass-assigned attribute would be silently dropped.

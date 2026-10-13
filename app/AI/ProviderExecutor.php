@@ -3,12 +3,15 @@
 namespace App\AI;
 
 use App\Agents\AgentRunService;
+use App\Agents\TokenBudgetService;
 use App\AI\Data\ProviderRequest;
 use App\AI\Data\ProviderResponse;
 use App\AI\Exceptions\ProviderException;
 use App\AI\Exceptions\RunInterruptedException;
+use App\Costs\CostCalculator;
 use App\Enums\AgentRunStatus;
 use App\Models\AgentRun;
+use App\Models\AiModel;
 use App\Models\AiProviderCall;
 use App\Reliability\AuditLogger;
 use App\Reliability\SystemHalt;
@@ -31,6 +34,8 @@ class ProviderExecutor
         private readonly AuditLogger $audit,
         private readonly SecretRedactor $redactor,
         private readonly SystemHalt $halt,
+        private readonly TokenBudgetService $budgets,
+        private readonly CostCalculator $costs,
     ) {}
 
     public function execute(AgentRun $run, ProviderRequest $request, bool $repair = false): ProviderResponse
@@ -62,6 +67,7 @@ class ProviderExecutor
                 try {
                     // Re-checked before every call: Stop AI or a pause must never be followed by another billed request.
                     $this->assertMayCall($run);
+                    $this->assertWithinBudget($run, $model, $request);
                     $heartbeat();
                     $this->circuits->guard($model->provider);
                     $provider = $this->providers->get($model->provider);
@@ -120,6 +126,23 @@ class ProviderExecutor
         if ($status !== AgentRunStatus::Running) {
             throw new RunInterruptedException('The agent run is '.($status?->value ?? 'missing').', not running.');
         }
+    }
+
+    private function assertWithinBudget(AgentRun $run, AiModel $model, ProviderRequest $request): void
+    {
+        $input = (int) ceil((strlen($request->system) + strlen($request->input)) / 4);
+        $cost = $this->costs->calculate($model, $input, 0, $request->maxOutputTokens)['total'] ?? null;
+        $constraint = $this->budgets->blockingConstraint($run->refresh(), $input, $cost);
+        if ($constraint === null) {
+            return;
+        }
+
+        $message = $constraint['metric'] === 'cost'
+            ? 'The next provider call may exceed the '.$constraint['scope'].' cost budget.'
+            : 'The next provider call may exceed the '.$constraint['scope'].' token budget.';
+        $this->runs->fail($run, $message, retryable: false);
+
+        throw new RunInterruptedException($message);
     }
 
     /** Throttled liveness for the run (§48.5) plus whatever the caller needs, e.g. the workflow step. */

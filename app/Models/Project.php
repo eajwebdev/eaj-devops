@@ -88,6 +88,17 @@ class Project extends Model
         return $this->hasMany(AgentRun::class);
     }
 
+    /** @return HasMany<ProjectTool, $this> */
+    public function tools(): HasMany
+    {
+        return $this->hasMany(ProjectTool::class);
+    }
+
+    public function githubRepository(): HasOne
+    {
+        return $this->hasOne(GithubRepository::class);
+    }
+
     public function eventStream(): string
     {
         return 'project.'.$this->getKey();

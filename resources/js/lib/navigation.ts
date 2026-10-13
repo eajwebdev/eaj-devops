@@ -1,5 +1,5 @@
 import { type NavItem } from '@/types';
-import { Activity, Bot, FolderKanban, LayoutDashboard, RadioTower, Settings, SquareKanban } from 'lucide-react';
+import { Activity, Bot, FolderKanban, Github, LayoutDashboard, RadioTower, Settings, SquareKanban, WalletCards } from 'lucide-react';
 
 /**
  * Main navigation (Plan §63). Only sections whose engines exist are listed —
@@ -9,9 +9,11 @@ import { Activity, Bot, FolderKanban, LayoutDashboard, RadioTower, Settings, Squ
 export const mainNavItems: NavItem[] = [
     { title: 'Command Center', url: '/command-center', icon: LayoutDashboard },
     { title: 'Projects', url: '/projects', icon: FolderKanban },
+    { title: 'Repositories', url: '/repositories', icon: Github },
     { title: 'AI War Room', url: '/war-room', icon: RadioTower },
     { title: 'Tasks', url: '/tasks', icon: SquareKanban },
     { title: 'AI Team', url: '/ai-team', icon: Bot },
+    { title: 'Costs', url: '/costs', icon: WalletCards },
     { title: 'Activity', url: '/activity', icon: Activity },
 ];
 

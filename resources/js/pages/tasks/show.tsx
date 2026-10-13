@@ -5,7 +5,9 @@ import { ReasonDialog } from '@/components/reason-dialog';
 import { PriorityBadge, STATUS, TaskStatusBadge, TypeLabel } from '@/components/task-badges';
 import { TaskFormDialog } from '@/components/task-form-dialog';
 import { AiPlanPanel, type AiPlan } from '@/components/task/ai-plan-panel';
+import { DeliveryPanel, type Delivery } from '@/components/task/delivery-panel';
 import { ImpactPanel } from '@/components/task/impact-panel';
+import { QualityPanel, type Quality } from '@/components/task/quality-panel';
 import { TaskConversation } from '@/components/task/task-conversation';
 import { Button } from '@/components/ui/button';
 import { useDebouncedReload } from '@/hooks/use-event-feed';
@@ -13,7 +15,7 @@ import AppLayout from '@/layouts/app-layout';
 import { relativeTime } from '@/lib/events';
 import { type BreadcrumbItem, type TaskDetail, type TaskOptions, type TaskStatus } from '@/types';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
-import { Bot, CheckCircle2, FolderGit2, Link2, LoaderCircle, Lock, Pencil, RefreshCcw, X, XCircle } from 'lucide-react';
+import { Bot, CheckCircle2, ExternalLink, FolderGit2, GitPullRequest, Link2, LoaderCircle, Lock, Pencil, RefreshCcw, X, XCircle } from 'lucide-react';
 import { useState } from 'react';
 
 interface TaskPageProps {
@@ -22,7 +24,14 @@ interface TaskPageProps {
     options: TaskOptions;
     candidates: { number: number; key: string; title: string; status: TaskStatus }[];
     aiPlan: AiPlan | null;
-    workspaceReady: { runner: boolean; git: boolean };
+    quality: Quality;
+    delivery: Delivery | null;
+    github: {
+        repository: { full_name: string; html_url: string; default_branch: string };
+        workspace: { branch: string; reviewed_sha: string | null; published_sha: string | null; published_at: string | null } | null;
+        pull_requests: { id: number; number: number; title: string; state: string; draft: boolean; head_sha: string; base_sha: string | null; html_url: string; merged_at: string | null; reviews: { reviewer: string; state: string; commit_id: string | null; submitted_at: string | null }[] }[];
+    } | null;
+    workspaceReady: { runner: boolean; runner_online: boolean; git: boolean };
     can: { manage: boolean; approve: boolean };
 }
 
@@ -36,18 +45,21 @@ const ACTION: Partial<Record<TaskStatus, string>> = {
     DONE: 'Approve',
 };
 
-export default function TaskPage({ project, task, options, candidates, aiPlan, workspaceReady, can }: TaskPageProps) {
+export default function TaskPage({ project, task, options, candidates, aiPlan, quality, delivery, github, workspaceReady, can }: TaskPageProps) {
     const { errors } = usePage<{ errors: Record<string, string> }>().props;
     const [editing, setEditing] = useState(false);
     const [asking, setAsking] = useState<TaskStatus | null>(null);
     const [busy, setBusy] = useState(false);
 
-    const reload = useDebouncedReload(['task', 'candidates', 'aiPlan'], 300);
+    const reload = useDebouncedReload(['task', 'candidates', 'aiPlan', 'quality', 'delivery'], 300);
     useStudioEvents((events) => {
         if (
             events.some(
                 (e) =>
-                    e.project_id === project.id && ['task.', 'workspace.', 'agent.', 'workflow.', 'ai.'].some((prefix) => e.type.startsWith(prefix)),
+                    e.project_id === project.id &&
+                    ['task.', 'workspace.', 'agent.', 'workflow.', 'ai.', 'tool.', 'quality.', 'project.tool', 'delivery.'].some((prefix) =>
+                        e.type.startsWith(prefix),
+                    ),
             )
         )
             reload();
@@ -127,10 +139,10 @@ export default function TaskPage({ project, task, options, candidates, aiPlan, w
                     }
                 />
 
-                {(errors.task || errors.workspace || errors.ai) && (
+                {(errors.task || errors.workspace || errors.ai || errors.quality || errors.delivery || errors.github) && (
                     <div role="alert" className="border-danger/30 bg-danger/10 flex items-start gap-2 rounded-md border px-3 py-2 text-sm">
                         <XCircle className="text-danger mt-0.5 size-4 shrink-0" />
-                        {errors.task ?? errors.workspace ?? errors.ai}
+                        {errors.task ?? errors.workspace ?? errors.ai ?? errors.quality ?? errors.delivery ?? errors.github}
                     </div>
                 )}
 
@@ -191,6 +203,31 @@ export default function TaskPage({ project, task, options, candidates, aiPlan, w
                             </Panel>
                         )}
 
+                        {(delivery || (task.workspace && (task.status === 'READY' || task.status === 'CHANGES_REQUESTED'))) && (
+                            <Panel title="AI delivery">
+                                <DeliveryPanel
+                                    delivery={delivery}
+                                    projectSlug={project.slug}
+                                    taskNumber={task.number}
+                                    canManage={can.manage}
+                                    canStart={task.status === 'READY' || task.status === 'CHANGES_REQUESTED'}
+                                    blocker={qualityBlocker(task, quality, workspaceReady)}
+                                />
+                            </Panel>
+                        )}
+
+                        {(task.workspace || quality.workflow) && (
+                            <Panel title="Quality checks">
+                                <QualityPanel
+                                    quality={quality}
+                                    projectSlug={project.slug}
+                                    taskNumber={task.number}
+                                    canRun={can.manage}
+                                    blocker={qualityBlocker(task, quality, workspaceReady)}
+                                />
+                            </Panel>
+                        )}
+
                         <Panel title="Conversation">
                             <TaskConversation task={task} projectSlug={project.slug} canManage={can.manage} />
                         </Panel>
@@ -231,6 +268,12 @@ export default function TaskPage({ project, task, options, candidates, aiPlan, w
                         <Panel title="Workspace">
                             <WorkspaceBox task={task} projectSlug={project.slug} ready={workspaceReady} canManage={can.manage} />
                         </Panel>
+
+                        {github && (
+                            <Panel title="GitHub release">
+                                <GithubRelease github={github} projectSlug={project.slug} task={task} can={can} />
+                            </Panel>
+                        )}
 
                         <Panel title="History">
                             <ol className="space-y-2.5">
@@ -282,6 +325,51 @@ export default function TaskPage({ project, task, options, candidates, aiPlan, w
             />
         </AppLayout>
     );
+}
+
+function GithubRelease({ github, projectSlug, task, can }: { github: NonNullable<TaskPageProps['github']>; projectSlug: string; task: TaskDetail; can: TaskPageProps['can'] }) {
+    const [busy, setBusy] = useState(false);
+    const pull = github.pull_requests[0];
+    const publish = () => {
+        setBusy(true);
+        router.post(route('tasks.github.store', [projectSlug, task.number]), {}, { preserveScroll: true, onFinish: () => setBusy(false) });
+    };
+    const merge = () => {
+        setBusy(true);
+        router.post(route('tasks.github.merge', [projectSlug, task.number, pull.id]), { method: 'squash' }, { preserveScroll: true, onFinish: () => setBusy(false) });
+    };
+
+    return (
+        <div className="space-y-3 text-sm">
+            <a href={github.repository.html_url} target="_blank" rel="noreferrer" className="text-heading flex items-center gap-1.5 font-medium hover:underline">{github.repository.full_name}<ExternalLink className="size-3" /></a>
+            {pull ? (
+                <div className="space-y-2">
+                    <a href={pull.html_url} target="_blank" rel="noreferrer" className="flex items-start gap-2 hover:underline"><GitPullRequest className="text-success mt-0.5 size-4" /><span>#{pull.number} · {pull.title}</span></a>
+                    <p className="text-muted-foreground font-mono text-xs">{pull.head_sha.slice(0, 7)} · {pull.state}{pull.merged_at ? ' · merged' : ''}</p>
+                    {pull.reviews.length > 0 && <ul className="space-y-1 text-xs">{pull.reviews.map((review, index) => <li key={`${review.reviewer}-${index}`}><span className="font-medium">@{review.reviewer}</span> · {review.state.toLowerCase()}</li>)}</ul>}
+                    <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" disabled={busy} onClick={() => router.post(route('tasks.github.sync', [projectSlug, task.number, pull.id]), {}, { preserveScroll: true })}><RefreshCcw /> Sync</Button>
+                        {can.approve && task.status === 'DONE' && pull.state === 'open' && <Button size="sm" disabled={busy} onClick={merge}>Merge reviewed SHA</Button>}
+                    </div>
+                </div>
+            ) : (
+                <div className="space-y-2">
+                    <p className="text-muted-foreground text-xs">{github.workspace?.published_sha ? `Branch published at ${github.workspace.published_sha.slice(0, 7)}. Create the pull request.` : 'Publish the reviewed ai/* branch, then create its pull request.'}</p>
+                    {can.manage && <Button size="sm" variant="outline" disabled={busy || !['RELEASE_READY', 'DONE'].includes(task.status)} onClick={publish}>{busy ? <LoaderCircle className="animate-spin" /> : <GitPullRequest />}{github.workspace?.published_sha ? 'Create pull request' : 'Publish reviewed branch'}</Button>}
+                </div>
+            )}
+        </div>
+    );
+}
+
+/** Why checks cannot start right now, in words the owner can act on — or null. */
+function qualityBlocker(task: TaskDetail, quality: Quality, ready: TaskPageProps['workspaceReady']): string | null {
+    if (task.workspace?.status !== 'ready') return 'Prepare the task workspace first — checks only ever run there, never in your project folder.';
+    if (!ready.runner_online) return 'The runner for this project is offline. Start it on that PC (eaj-runner start).';
+    if (quality.tools.runnable === 0)
+        return "No engineering tools are allowed for this project. Scan it, or switch tools on under the project's Engineering tools.";
+
+    return null;
 }
 
 function Dependencies({

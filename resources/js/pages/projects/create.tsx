@@ -25,7 +25,7 @@ const icons: Record<ConnectionTypeOption['value'], LucideIcon> = {
 
 const unavailableReason: Record<ConnectionTypeOption['value'], string> = {
     local: '',
-    github: 'Arrives with GitHub integration (Phase 10)',
+    github: '',
     new: 'Coming after the local project engine',
     archive: 'Coming after the local project engine',
 };
@@ -56,6 +56,7 @@ type ProjectForm = {
     local_path: string;
     description: string;
     local_runner_id: number | null;
+    github_repository: string;
 };
 
 /** Mirrors LocalRunner::allowsPath — early feedback only; the runner re-checks on the PC. */
@@ -71,15 +72,16 @@ function runnerAllows(runner: LocalRunner, folder: string): boolean {
     return runner.allowed_roots.some((root) => target === norm(root) || target.startsWith(`${norm(root)}/`));
 }
 
-export default function CreateProject({ connectionTypes, runners }: { connectionTypes: ConnectionTypeOption[]; runners: LocalRunner[] }) {
+export default function CreateProject({ connectionTypes, runners, github, selectedGithubRepository }: { connectionTypes: ConnectionTypeOption[]; runners: LocalRunner[]; github: { connected: boolean; repositories: { full_name: string; private: boolean; archived: boolean }[] }; selectedGithubRepository: string | null }) {
     const defaultRunnerId: number | null = (runners.find((r) => r.status === 'online') ?? runners[0])?.id ?? null;
     const { data, setData, post, processing, errors } = useForm<ProjectForm>({
-        connection_type: 'local',
+        connection_type: selectedGithubRepository ? 'github' : 'local',
         name: '',
         key: '',
         local_path: '',
         description: '',
         local_runner_id: defaultRunnerId,
+        github_repository: selectedGithubRepository ?? '',
     });
     const selectedRunner = runners.find((r) => r.id === data.local_runner_id) ?? null;
     // Once the user edits the key, stop suggesting one from the name.
@@ -124,7 +126,7 @@ export default function CreateProject({ connectionTypes, runners }: { connection
                                             <span className="text-heading block text-sm font-medium">{type.label}</span>
                                             <span className="text-muted-foreground block text-xs">
                                                 {type.available
-                                                    ? 'A folder on a machine running the EAJ Local Runner'
+                                                    ? type.value === 'github' ? 'Import or link a repository through GitHub' : 'A folder on a machine running the EAJ Local Runner'
                                                     : unavailableReason[type.value]}
                                             </span>
                                         </span>
@@ -197,6 +199,22 @@ export default function CreateProject({ connectionTypes, runners }: { connection
                                     review and your approval.
                                 </p>
                                 <InputError message={errors.local_path} />
+                            </div>
+                        )}
+
+                        {data.connection_type === 'github' && (
+                            <div className="grid gap-2">
+                                <Label htmlFor="github_repository">GitHub repository</Label>
+                                {github.connected ? (
+                                    <select id="github_repository" required value={data.github_repository} onChange={(e) => setData('github_repository', e.target.value)} className="border-input bg-background focus-visible:ring-ring h-10 w-full rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:outline-hidden">
+                                        <option value="">Choose repository…</option>
+                                        {github.repositories.filter((repo) => !repo.archived).map((repo) => <option key={repo.full_name} value={repo.full_name}>{repo.full_name}{repo.private ? ' · private' : ''}</option>)}
+                                    </select>
+                                ) : (
+                                    <p className="text-muted-foreground text-sm">Connect GitHub on the <Link href={route('repositories.index')} className="text-brand-text underline-offset-4 hover:underline">Repositories page</Link>, then return here.</p>
+                                )}
+                                <p className="text-muted-foreground text-xs">This imports repository metadata. Attach a Local Runner checkout when you want the AI team to implement tasks.</p>
+                                <InputError message={errors.github_repository} />
                             </div>
                         )}
 

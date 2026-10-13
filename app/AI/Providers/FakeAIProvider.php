@@ -14,6 +14,9 @@ class FakeAIProvider implements AIProviderInterface
     /** @var SplQueue<ProviderResponse|Throwable> */
     private SplQueue $script;
 
+    /** @var list<ProviderRequest> what the agents were asked, for tests */
+    public array $requests = [];
+
     public function __construct()
     {
         $this->script = new SplQueue;
@@ -34,10 +37,13 @@ class FakeAIProvider implements AIProviderInterface
     public function clear(): void
     {
         $this->script = new SplQueue;
+        $this->requests = [];
     }
 
     public function generate(ProviderRequest $request): ProviderResponse
     {
+        $this->requests[] = $request;
+
         if ($this->script->isEmpty()) {
             throw new ProviderException('The fake provider has no scripted response.', $this->key(), 'script_exhausted');
         }

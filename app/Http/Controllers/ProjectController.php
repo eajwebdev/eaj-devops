@@ -7,6 +7,9 @@ use App\Enums\ProjectConnectionStatus;
 use App\Enums\ProjectConnectionType;
 use App\Enums\WorkflowStatus;
 use App\Enums\WorkspaceStatus;
+use App\Github\GithubApi;
+use App\Github\GithubException;
+use App\Github\GithubRepositoryService;
 use App\Http\Presenters\ProjectPresenter;
 use App\Http\Presenters\RunnerPresenter;
 use App\Http\Requests\StoreProjectRequest;
@@ -15,6 +18,7 @@ use App\Models\Organization;
 use App\Models\OutboxEvent;
 use App\Models\Project;
 use App\Models\ProjectConnection;
+use App\Models\ProjectTool;
 use App\Models\RepositoryWorkspace;
 use App\Models\RunnerCommand;
 use App\Models\Workflow;
@@ -37,6 +41,8 @@ class ProjectController extends Controller
         private readonly CurrentOrganization $current,
         private readonly EventRecorder $events,
         private readonly AuditLogger $audit,
+        private readonly GithubApi $github,
+        private readonly GithubRepositoryService $githubRepositories,
     ) {}
 
     public function index(): Response
@@ -59,6 +65,18 @@ class ProjectController extends Controller
     {
         $this->authorize('create', [Project::class, $this->current->get()]);
 
+        $githubConnection = $this->current->get()->githubConnection()->whereNull('revoked_at')->first();
+        $githubRepositories = [];
+        if ($githubConnection) {
+            try {
+                $githubRepositories = collect($this->github->repositories($githubConnection))->map(fn (array $repo) => [
+                    'full_name' => $repo['full_name'], 'private' => (bool) ($repo['private'] ?? false), 'archived' => (bool) ($repo['archived'] ?? false),
+                ])->values()->all();
+            } catch (GithubException) {
+                // The form still offers reconnection from the Repositories page.
+            }
+        }
+
         return Inertia::render('projects/create', [
             'connectionTypes' => collect(ProjectConnectionType::cases())->map(fn (ProjectConnectionType $t) => [
                 'value' => $t->value,
@@ -66,6 +84,8 @@ class ProjectController extends Controller
                 'available' => $t->isAvailable(),
             ]),
             'runners' => $this->runnersFor($this->current->get()),
+            'github' => ['connected' => (bool) $githubConnection, 'repositories' => $githubRepositories],
+            'selectedGithubRepository' => request()->query('github_repository'),
         ]);
     }
 
@@ -74,7 +94,21 @@ class ProjectController extends Controller
         $organization = $this->current->get();
         $data = $request->validated();
 
-        $project = DB::transaction(function () use ($organization, $data, $request) {
+        $githubConnection = null;
+        $githubData = null;
+        if ($data['connection_type'] === ProjectConnectionType::GitHub->value) {
+            $githubConnection = $organization->githubConnection()->whereNull('revoked_at')->first();
+            if (! $githubConnection) {
+                return back()->withErrors(['github_repository' => 'Connect GitHub before importing a repository.'])->withInput();
+            }
+            try {
+                $githubData = $this->github->repository($githubConnection, $data['github_repository']);
+            } catch (GithubException $e) {
+                return back()->withErrors(['github_repository' => $e->getMessage()])->withInput();
+            }
+        }
+
+        $project = DB::transaction(function () use ($organization, $data, $request, $githubConnection, $githubData) {
             $project = new Project([
                 'key' => $data['key'],
                 'name' => $data['name'],
@@ -87,12 +121,19 @@ class ProjectController extends Controller
             $connection = new ProjectConnection([
                 'type' => $data['connection_type'],
                 'local_path' => $data['local_path'] ?? null,
+                'repository_url' => $githubData['clone_url'] ?? null,
+                'default_branch' => $githubData['default_branch'] ?? null,
             ]);
             $connection->forceFill([
-                'status' => ProjectConnectionStatus::PendingScan,
+                'status' => $githubData ? ProjectConnectionStatus::Connected : ProjectConnectionStatus::PendingScan,
                 'local_runner_id' => $data['local_runner_id'] ?? null,
+                'git_enabled' => (bool) $githubData,
             ]);
             $project->connection()->save($connection);
+
+            if ($githubConnection && $githubData) {
+                $this->githubRepositories->syncRepository($githubConnection, $githubData, $project);
+            }
 
             $this->events->record('project.created', [
                 'project' => ['id' => $project->id, 'key' => $project->key, 'name' => $project->name],
@@ -108,7 +149,7 @@ class ProjectController extends Controller
 
         // Plan §12: Choose folder → Scan → Detect stack → Profile → Code index → Ready.
         $scanned = false;
-        if ($project->connection->local_runner_id) {
+        if ($project->connection->type === ProjectConnectionType::Local && $project->connection->local_runner_id) {
             try {
                 $work->scan($project->load('connection.runner'), $request->user());
                 $scanned = true;
@@ -125,7 +166,7 @@ class ProjectController extends Controller
     public function show(Project $project): Response
     {
         $this->authorize('view', $project);
-        $project->load('connection.runner');
+        $project->load('connection.runner', 'tools');
 
         $events = OutboxEvent::query()
             ->where('stream', $project->eventStream())
@@ -161,6 +202,10 @@ class ProjectController extends Controller
                 ->where('status', '!=', WorkspaceStatus::Removed)
                 ->latest()
                 ->get()
+                ->map->toClientArray(),
+            'tools' => $project->tools
+                ->sortBy(fn (ProjectTool $t) => [$t->available ? 0 : 1, $t->kind->order(), $t->key])
+                ->values()
                 ->map->toClientArray(),
             'can' => [
                 'update' => request()->user()->can('update', $project),

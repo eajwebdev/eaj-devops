@@ -8,6 +8,7 @@ import {
     CheckCircle2,
     CirclePause,
     CirclePlay,
+    FileCode2,
     FolderGit2,
     FolderPlus,
     FolderX,
@@ -25,11 +26,14 @@ import {
     RefreshCcw,
     RotateCcw,
     ScanSearch,
+    ShieldAlert,
+    ShieldCheck,
     SquarePlus,
     Unlink,
     Unplug,
     Wand2,
     Workflow,
+    Wrench,
     XCircle,
 } from 'lucide-react';
 
@@ -72,6 +76,16 @@ const agentTask = (e: StudioEvent) => {
 
     return [role, key].filter(Boolean).join(' · ') || undefined;
 };
+const toolRun = (e: StudioEvent) => (e.payload.tool_run ?? {}) as { label?: string; status?: string; summary?: string | null; error?: string | null };
+const TOOL_RESULT: Record<string, { icon: LucideIcon; tone: Tone; verb: string }> = {
+    passed: { icon: CheckCircle2, tone: 'success', verb: 'passed' },
+    failed: { icon: XCircle, tone: 'danger', verb: 'failed' },
+    flaky: { icon: AlertTriangle, tone: 'warning', verb: 'found flaky tests' },
+    error: { icon: XCircle, tone: 'danger', verb: 'could not run' },
+    skipped: { icon: CheckCircle2, tone: 'neutral', verb: 'had nothing to check' },
+    blocked: { icon: ShieldAlert, tone: 'warning', verb: 'was blocked by the runner' },
+    cancelled: { icon: Ban, tone: 'neutral', verb: 'was stopped' },
+};
 const workspaceKey = (e: StudioEvent) => str((e.payload.workspace as { task_key?: string } | undefined)?.task_key) ?? 'task';
 
 /** Per-command chatter drives live progress but stays out of activity feeds (Plan §61: meaningful events only). */
@@ -82,6 +96,10 @@ const QUIET_TYPES = new Set([
     'runner.command.succeeded',
     'task.reordered',
     'task.impact.analyzed',
+    'tool.run.queued',
+    'tool.run.started',
+    'tool.run.progress',
+    'workflow.steps.appended',
 ]);
 
 export function isFeedEvent(event: StudioEvent): boolean {
@@ -280,10 +298,80 @@ export function describeEvent(event: StudioEvent): EventDescription {
         case 'agent.run.retry_limit_reached':
         case 'agent.run.budget_exhausted':
             return { icon: AlertTriangle, tone: 'warning', title: agentMessage(event), detail: `Needs your decision · ${agentTask(event) ?? ''}` };
+        case 'budget.warning':
+            return { icon: AlertTriangle, tone: 'warning', title: agentMessage(event), detail: agentTask(event) };
         case 'agent.run.failed':
             return { icon: XCircle, tone: 'danger', title: agentMessage(event), detail: agentTask(event) };
         case 'agent.run.cancelled':
             return { icon: Ban, tone: 'neutral', title: agentMessage(event), detail: agentTask(event) };
+        case 'tool.run.queued':
+        case 'tool.run.started':
+            return { icon: Wrench, tone: 'brand', title: `${toolRun(event).label ?? 'Tool'} started` };
+        case 'tool.run.progress':
+            return { icon: Wrench, tone: 'brand', title: str(p.message) ?? 'Tool running' };
+        case 'tool.run.finished': {
+            const run = toolRun(event);
+            const result = TOOL_RESULT[run.status ?? ''] ?? TOOL_RESULT.error;
+
+            return {
+                icon: result.icon,
+                tone: result.tone,
+                title: `${run.label ?? 'Tool'} ${result.verb}`,
+                detail: run.summary ?? run.error ?? undefined,
+            };
+        }
+        case 'quality.checks.completed': {
+            const gates = (p.gates as { label: string; status: string }[] | undefined) ?? [];
+            const failing = gates.filter((g) => g.status === 'failed' || g.status === 'not_run').map((g) => g.label);
+
+            return p.passed
+                ? { icon: ShieldCheck, tone: 'success', title: `Quality gates passed for ${str(p.task) ?? 'task'}` }
+                : {
+                      icon: ShieldAlert,
+                      tone: 'danger',
+                      title: `Quality gates failed for ${str(p.task) ?? 'task'}`,
+                      detail: failing.join(', ') || undefined,
+                  };
+        }
+        case 'project.tools.updated':
+            return { icon: Wrench, tone: 'info', title: 'Engineering tools updated', detail: `${p.tools ?? 0} tools detected` };
+        case 'project.tool.changed': {
+            const tool = (p.tool ?? {}) as { label?: string; enabled?: boolean };
+
+            return { icon: Wrench, tone: 'neutral', title: `${tool.label ?? 'Tool'} ${tool.enabled ? 'allowed for agents' : 'switched off'}` };
+        }
+        case 'delivery.changes.applied': {
+            const c = (p.change_set ?? {}) as { role?: string; files?: unknown[]; additions?: number; deletions?: number; mode?: string };
+
+            return {
+                icon: FileCode2,
+                tone: 'brand',
+                title: `${c.role ?? 'Developer'} changed ${c.files?.length ?? 0} file(s) in ${taskKey(event)}`,
+                detail: `+${c.additions ?? 0} −${c.deletions ?? 0}${c.mode && c.mode !== 'implement' ? ` · ${c.mode === 'fix' ? 'fix cycle' : 'requested changes'}` : ''}`,
+            };
+        }
+        case 'delivery.review.completed': {
+            const r = (p.review ?? {}) as { gate?: string; passed?: boolean; score?: number; minimum_score?: number; blocking?: number };
+            const gate = { qa: 'QA', senior: 'Senior', security: 'Security' }[r.gate ?? ''] ?? 'Review';
+
+            return r.passed
+                ? {
+                      icon: CheckCircle2,
+                      tone: 'success',
+                      title: `${gate} review passed ${taskKey(event)}`,
+                      detail: `score ${r.score}/${r.minimum_score}`,
+                  }
+                : {
+                      icon: XCircle,
+                      tone: 'danger',
+                      title: `${gate} review requested changes on ${taskKey(event)}`,
+                      detail: `score ${r.score}/${r.minimum_score} · ${r.blocking ?? 0} blocking`,
+                  };
+        }
+        case 'delivery.release_ready':
+            return { icon: ShieldCheck, tone: 'success', title: `${taskLabel(event)} is Release Ready`, detail: 'Waiting for your approval' };
+        case 'runner.command.cancel_requested':
+            return { icon: Ban, tone: 'neutral', title: `Stopping ${commandLabel(event)} on the runner` };
         default:
             return { icon: Workflow, tone: 'neutral', title: event.type };
     }

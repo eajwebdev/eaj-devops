@@ -3,15 +3,16 @@ import path from 'node:path';
 import { gitState } from '../git-state.js';
 import { ProjectFiles } from './files.js';
 import { detectStack } from './detect.js';
+import { describeTools, detectTools } from '../tools/catalog.js';
 
 /**
  * Scan a project folder: stack profile + Git state (Plan §12, §18).
  * Read-only — nothing in the folder is changed.
  *
  * @param {string} folder already validated against the allowed roots
- * @param {{ workspacesRoot: string, progress?: (message: string) => Promise<void> | void }} options
+ * @param {{ workspacesRoot: string, progress?: (message: string) => Promise<void> | void, toolPaths?: import('../tools/catalog.js').ToolPaths }} options
  */
-export async function scanProject(folder, { workspacesRoot, progress = () => {} }) {
+export async function scanProject(folder, { workspacesRoot, progress = () => {}, toolPaths = {} }) {
     const files = new ProjectFiles(folder);
 
     await progress('Reading project manifests…');
@@ -35,5 +36,8 @@ export async function scanProject(folder, { workspacesRoot, progress = () => {} 
         }
     }
 
-    return { stack: { ...stack, warnings: undefined }, git, warnings };
+    // Engineering tools the Studio may ask for by key (Plan §34, §84). Nothing runs during a scan.
+    const tools = describeTools(detectTools(folder, { toolPaths }));
+
+    return { stack: { ...stack, warnings: undefined }, git, warnings, tools };
 }

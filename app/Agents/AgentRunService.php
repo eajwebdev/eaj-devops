@@ -3,12 +3,14 @@
 namespace App\Agents;
 
 use App\AI\SkillLoader;
+use App\Costs\CostCalculator;
 use App\Enums\AgentRunStatus;
 use App\Enums\AgentStatus;
 use App\Enums\TaskStatus;
 use App\Models\Agent;
 use App\Models\AgentEvent;
 use App\Models\AgentRun;
+use App\Models\Organization;
 use App\Models\Task;
 use App\Models\TokenUsage;
 use App\Reliability\EventRecorder;
@@ -35,6 +37,7 @@ class AgentRunService
         private readonly TaskService $tasks,
         private readonly SystemHalt $halt,
         private readonly SkillLoader $skills,
+        private readonly CostCalculator $costs,
     ) {}
 
     /** Runs that hold their agent (one active run per agent). */
@@ -147,6 +150,8 @@ class AgentRunService
         $constraint = null;
 
         $usage = DB::transaction(function () use ($run, $input, $cachedInput, $output, $total, $idempotencyKey, &$blocked, &$constraint) {
+            // One lock serializes every organization-wide/project-wide budget decision.
+            Organization::whereKey($run->organization_id)->lockForUpdate()->firstOrFail();
             $locked = AgentRun::whereKey($run->id)->lockForUpdate()->firstOrFail();
             $existing = TokenUsage::where('agent_run_id', $locked->id)->where('idempotency_key', $idempotencyKey)->first();
 
@@ -158,7 +163,9 @@ class AgentRunService
                 throw new DomainException('Token usage cannot be added to a finished run.');
             }
 
-            $constraint = $this->budgets->headroom($locked, $total);
+            $model = $locked->model()->first();
+            $cost = $model ? $this->costs->calculate($model, $input, $cachedInput, $output) : null;
+            $constraint = $this->budgets->blockingConstraint($locked, $total, $cost['total'] ?? null);
             $usage = TokenUsage::forceCreate([
                 'organization_id' => $locked->organization_id,
                 'project_id' => $locked->project_id,
@@ -170,6 +177,11 @@ class AgentRunService
                 'cached_input_tokens' => min($cachedInput, $input),
                 'output_tokens' => $output,
                 'total_tokens' => $total,
+                'input_cost' => $cost['input'] ?? null,
+                'cached_input_cost' => $cost['cached_input'] ?? null,
+                'output_cost' => $cost['output'] ?? null,
+                'total_cost' => $cost['total'] ?? null,
+                'pricing_snapshot' => $cost['pricing'] ?? null,
                 'idempotency_key' => Str::limit($idempotencyKey, 191, ''),
                 'recorded_at' => now(),
             ]);
@@ -179,12 +191,28 @@ class AgentRunService
                 'cached_input_tokens' => $locked->cached_input_tokens + min($cachedInput, $input),
                 'output_tokens' => $locked->output_tokens + $output,
                 'total_tokens' => $locked->total_tokens + $total,
+                'total_cost' => round((float) $locked->total_cost + (float) ($cost['total'] ?? 0), 6),
                 'version' => $locked->version + 1,
             ])->save();
 
-            if (! $constraint['allowed']) {
+            foreach ($this->budgets->recordAlerts($locked) as $alert) {
+                $label = $alert->metric === 'cost' ? 'cost' : 'token';
+                $this->append($locked, 'budget.warning', ucfirst($label)." budget reached {$alert->threshold}% ({$alert->scope}).", [
+                    'metric' => $alert->metric,
+                    'threshold' => $alert->threshold,
+                    'scope' => $alert->scope,
+                    'used' => $alert->used,
+                    'limit' => $alert->limit_value,
+                    'hard_stop' => $alert->hard_stop,
+                ]);
+            }
+
+            if ($constraint !== null) {
                 $blocked = true;
-                $message = "Token budget reached ({$constraint['scope']}: {$constraint['limit']} tokens).";
+                $measure = $constraint['metric'] === 'cost'
+                    ? '$'.number_format((float) $constraint['limit'], 2).' cost'
+                    : number_format((int) $constraint['limit']).' tokens';
+                $message = ucfirst($constraint['metric'])." budget reached ({$constraint['scope']}: {$measure}).";
                 $locked->forceFill(['status' => AgentRunStatus::Blocked, 'last_error' => $message, 'finished_at' => now()])->save();
                 $locked->agent()->update(['status' => AgentStatus::Blocked]);
                 $this->append($locked, 'agent.run.budget_exhausted', $message, $constraint);
@@ -193,7 +221,8 @@ class AgentRunService
                     'input_tokens' => $input,
                     'cached_input_tokens' => min($cachedInput, $input),
                     'output_tokens' => $output,
-                    'remaining' => $constraint['remaining'] - $total,
+                    'cost' => $cost['total'] ?? null,
+                    'priced' => $cost !== null,
                 ]);
             }
 
@@ -205,7 +234,8 @@ class AgentRunService
         if ($blocked) {
             $task = $run->task()->firstOrFail();
             if (TaskStateMachine::exists($task->status, TaskStatus::Blocked)) {
-                $this->tasks->transition($task, TaskStatus::Blocked, 'system', null, "Token budget reached for {$run->agent->name}.");
+                $metric = $constraint['metric'] === 'cost' ? 'Cost' : 'Token';
+                $this->tasks->transition($task, TaskStatus::Blocked, 'system', null, "{$metric} budget reached for {$run->agent->name}.");
             }
         }
 

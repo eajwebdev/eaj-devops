@@ -13,6 +13,7 @@ import path from 'node:path';
  *   allowedRoots: string[],
  *   workspacesRoot: string,
  *   insecure: boolean,
+ *   toolPaths: import('./tools/catalog.js').ToolPaths,
  * }} RunnerConfig
  */
 
@@ -50,6 +51,7 @@ export function loadConfig() {
         allowedRoots: stored.allowedRoots ?? [],
         workspacesRoot: stored.workspacesRoot ?? defaultWorkspacesRoot(),
         insecure: stored.insecure ?? false,
+        toolPaths: stored.toolPaths ?? {},
     };
 }
 

@@ -18,6 +18,7 @@ class RepositoryWorkspace extends Model
         return [
             'status' => WorkspaceStatus::class,
             'removed_at' => 'datetime',
+            'published_at' => 'datetime',
         ];
     }
 
@@ -58,6 +59,8 @@ class RepositoryWorkspace extends Model
             'base_branch' => $this->base_branch,
             'base_sha' => $this->base_sha,
             'last_checkpoint_sha' => $this->last_checkpoint_sha,
+            'published_sha' => $this->published_sha,
+            'published_at' => $this->published_at?->toIso8601String(),
             'status' => $this->status->value,
             'error' => $this->error,
             'created_at' => $this->created_at?->toIso8601String(),

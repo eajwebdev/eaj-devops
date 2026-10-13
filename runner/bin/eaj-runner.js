@@ -9,6 +9,7 @@ import { indexFile, listFiles } from '../src/indexer.js';
 import { isInside, normalize, RunnerError } from '../src/paths.js';
 import { Runner } from '../src/runner.js';
 import { scanProject } from '../src/scanner/scan.js';
+import { describeTools, detectTools } from '../src/tools/catalog.js';
 
 const HELP = `EAJ Local Runner v${RUNNER_VERSION}
 
@@ -18,6 +19,9 @@ Usage:
   eaj-runner disallow <folder>
   eaj-runner roots                 Show allowed folders and the workspaces folder
   eaj-runner workspaces <folder>   Where task worktrees are created
+  eaj-runner tool-path <php|composer|python> [<file>]
+                                   Use this executable for project tools (e.g. XAMPP's php.exe)
+  eaj-runner tools <folder>        List the tools the runner would run for a project (nothing runs)
   eaj-runner start [--once]        Connect to the Studio and process commands
   eaj-runner status
   eaj-runner scan <folder>         Scan locally and print the result (nothing is sent)
@@ -93,6 +97,27 @@ async function main() {
             console.log(`Allowed project folders:\n${config.allowedRoots.map((r) => `  ${r}`).join('\n') || '  (none — add one with eaj-runner allow <folder>)'}`);
             console.log(`Workspaces folder:\n  ${config.workspacesRoot}`);
             break;
+
+        case 'tool-path': {
+            const [tool, file] = args;
+            if (!['php', 'composer', 'python'].includes(tool ?? '')) throw new RunnerError('USAGE', 'Usage: eaj-runner tool-path <php|composer|python> [<file>]');
+            const key = /** @type {'php' | 'composer' | 'python'} */ (tool);
+            if (!file) {
+                console.log(config.toolPaths[key] ?? `(from PATH: ${key})`);
+                break;
+            }
+            const resolved = path.resolve(file);
+            if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) throw new RunnerError('PATH_NOT_FOUND', `File not found: ${resolved}`);
+            saveConfig({ ...config, toolPaths: { ...config.toolPaths, [key]: resolved } });
+            console.log(`✓ ${key} → ${resolved}`);
+            break;
+        }
+
+        case 'tools': {
+            const folder = requireFolder(args[0]);
+            console.log(JSON.stringify(describeTools(detectTools(folder, { toolPaths: config.toolPaths })), null, 2));
+            break;
+        }
 
         case 'status':
             console.log(config.token ? `Paired with ${config.server} as "${config.name}" (runner #${config.runnerId}).` : 'Not paired.');

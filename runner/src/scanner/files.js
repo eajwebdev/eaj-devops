@@ -74,7 +74,7 @@ export class ProjectFiles {
         if (text === null) return null;
 
         try {
-            return JSON.parse(text.replace(/^﻿/, ''));
+            return JSON.parse(text.replace(/^\uFEFF/, ''));
         } catch {
             return null;
         }

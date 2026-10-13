@@ -20,7 +20,8 @@ final class TaskStateMachine
     {
         return match ($from) {
             S::Backlog => [S::Ready, S::Blocked, S::Cancelled],
-            S::Ready => [S::Backlog, S::Planning, S::Blocked, S::Cancelled],
+            // Ready → In Development: AI delivery of a planned task (system only, ADR-015).
+            S::Ready => [S::Backlog, S::Planning, S::InProgress, S::Blocked, S::Cancelled],
             // Planning → Ready: the plan is finished and the task waits for implementation (system only).
             S::Planning => [S::Ready, S::InProgress, S::Blocked, S::Cancelled],
             S::InProgress => [S::Testing, S::Blocked, S::Cancelled],

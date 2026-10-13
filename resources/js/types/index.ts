@@ -268,6 +268,7 @@ export interface TaskImpact {
     agents: { role: AgentRole; reason: string }[];
     complexity: 'S' | 'M' | 'L' | 'XL';
     token_estimate: number;
+    estimated_cost: { amount: number; currency: string; priced_models: number; total_models: number } | null;
     notes: string[];
     basis: string;
 }

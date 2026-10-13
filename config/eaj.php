@@ -4,6 +4,18 @@ use App\AI\Orchestrator;
 use App\AI\PlanningWorkflowListener;
 use App\AI\Steps\FinishPlanningStep;
 use App\AI\Steps\RunSpecialistStep;
+use App\Delivery\DeliveryListener;
+use App\Delivery\DeliveryWorkflow;
+use App\Delivery\Steps\AfterChecksStep;
+use App\Delivery\Steps\ImplementStep;
+use App\Delivery\Steps\ReviewDecisionStep;
+use App\Delivery\Steps\ReviewStep;
+use App\Delivery\Steps\TaskTransitionStep;
+use App\Tools\QualityChecks;
+use App\Tools\QualityChecksListener;
+use App\Tools\Steps\CheckpointWorkspaceStep;
+use App\Tools\Steps\QualityReportStep;
+use App\Tools\Steps\RunToolStep;
 
 return [
 
@@ -91,11 +103,40 @@ return [
     'step_handlers' => [
         RunSpecialistStep::NAME => RunSpecialistStep::class,
         FinishPlanningStep::NAME => FinishPlanningStep::class,
+        RunToolStep::NAME => RunToolStep::class,
+        CheckpointWorkspaceStep::NAME => CheckpointWorkspaceStep::class,
+        QualityReportStep::NAME => QualityReportStep::class,
+        TaskTransitionStep::NAME => TaskTransitionStep::class,
+        ImplementStep::NAME => ImplementStep::class,
+        AfterChecksStep::NAME => AfterChecksStep::class,
+        ReviewStep::NAME => ReviewStep::class,
+        ReviewDecisionStep::NAME => ReviewDecisionStep::class,
     ],
 
     // Workflow type => App\Workflow\Contracts\WorkflowListener keeping its subject truthful (G6).
     'workflow_listeners' => [
         Orchestrator::WORKFLOW => PlanningWorkflowListener::class,
+        QualityChecks::WORKFLOW => QualityChecksListener::class,
+        DeliveryWorkflow::WORKFLOW => DeliveryListener::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Review Gates (Plan §36, §98, §99)
+    |--------------------------------------------------------------------------
+    |
+    | A review passes only with at least this score AND no blocking finding
+    | (Blocker/Major; Critical/High for security). The reviewer's own opinion
+    | of whether it passed is not used.
+    |
+    */
+
+    'review' => [
+        'minimum_score' => [
+            'qa' => (int) env('EAJ_REVIEW_MIN_QA', 80),
+            'senior' => (int) env('EAJ_REVIEW_MIN_SENIOR', 90),
+            'security' => (int) env('EAJ_REVIEW_MIN_SECURITY', 90),
+        ],
     ],
 
     /*

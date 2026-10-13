@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import { RunnerError } from './paths.js';
 
-export const RUNNER_VERSION = '0.1.0';
+export const RUNNER_VERSION = '0.3.0';
 
 /**
  * @typedef {{ id: string, type: string, issued_at: string, payload_json: string, signature: string }} SignedCommand
@@ -75,7 +75,7 @@ export class StudioClient {
      * @param {string} message
      */
     progress(id, message) {
-        return this.call('POST', `/commands/${encodeURIComponent(id)}/progress`, { message });
+        return /** @type {Promise<{ ok: boolean, cancel?: boolean }>} */ (this.call('POST', `/commands/${encodeURIComponent(id)}/progress`, { message }));
     }
 
     /**

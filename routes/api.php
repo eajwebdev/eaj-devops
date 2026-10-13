@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\GithubWebhookController;
 use App\Http\Controllers\Api\Runner\RunnerApiController;
 use App\Http\Middleware\AuthenticateRunner;
 use Illuminate\Support\Facades\Route;
@@ -21,3 +22,5 @@ Route::prefix('runner/v1')->name('runner.')->group(function () {
         Route::post('commands/{command}/complete', [RunnerApiController::class, 'complete'])->name('commands.complete');
     });
 });
+
+Route::post('github/webhook', GithubWebhookController::class)->middleware('throttle:300,1')->name('github.webhook');

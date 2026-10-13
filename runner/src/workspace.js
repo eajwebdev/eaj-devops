@@ -113,6 +113,45 @@ export async function checkpointWorkspace(payload, ctx) {
 }
 
 /**
+ * Publish an approved ai/* worktree branch using credentials configured on the
+ * developer machine. No GitHub token is accepted in the command payload.
+ * @param {{ workspace_path: string, branch: string, repository_full_name: string }} payload
+ * @param {Ctx} ctx
+ */
+export async function pushWorkspace(payload, ctx) {
+    const workspace = await assertWorktree(payload.workspace_path, ctx);
+    const branch = String(payload.branch ?? '');
+    const repository = String(payload.repository_full_name ?? '');
+    if (!/^ai\/[A-Z][A-Z0-9]{1,9}-\d{1,7}-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(branch)) {
+        throw new RunnerError('INVALID_INPUT', 'Only an ai/<task>-<slug> branch can be published.');
+    }
+    if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
+        throw new RunnerError('INVALID_INPUT', 'Invalid GitHub repository name.');
+    }
+
+    const opts = { cwd: workspace, workspacesRoot: ctx.workspacesRoot };
+    const current = (await git(['branch', '--show-current'], opts)).stdout.trim();
+    if (current !== branch) throw new RunnerError('BRANCH_MISMATCH', `Workspace is on ${current || 'detached HEAD'}, not ${branch}.`);
+
+    const remote = (await git(['remote', 'get-url', 'origin'], opts)).stdout.trim();
+    if (githubRepository(remote) !== repository.toLowerCase()) {
+        throw new RunnerError('REMOTE_MISMATCH', 'The origin remote does not match the repository attached in the Studio.');
+    }
+
+    await git(['push', '--set-upstream', 'origin', `${branch}:${branch}`], { ...opts, timeoutMs: 600_000 });
+
+    return { sha: (await git(['rev-parse', 'HEAD'], opts)).stdout.trim(), branch };
+}
+
+/** @param {string} url */
+function githubRepository(url) {
+    const cleaned = url.replace(/\?.*$/, '').replace(/\.git$/, '');
+    const match = cleaned.match(/^(?:https?:\/\/(?:[^@/]+@)?github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)$/i);
+
+    return match?.[1]?.toLowerCase() ?? null;
+}
+
+/**
  * Crash recovery: reset the workspace to a checkpoint (Plan §48.4). Only ever
  * inside a task worktree — the policy refuses it anywhere else.
  * @param {{ workspace_path: string, sha: string }} payload
@@ -177,7 +216,7 @@ export function workspacePath(workspacesRoot, project, taskKey) {
  * @param {string} p
  * @param {Ctx} ctx
  */
-async function assertWorktree(p, ctx) {
+export async function assertWorktree(p, ctx) {
     const workspace = assertInsideWorkspaces(p, ctx.workspacesRoot);
     const top = await git(['rev-parse', '--show-toplevel'], { cwd: workspace, workspacesRoot: ctx.workspacesRoot, allowFailure: true }).catch(() => null);
 

@@ -34,8 +34,19 @@ class ContextBuilder
             'indexed_symbols' => $symbols->all(),
             'dependencies' => $task->dependencies->map(fn (Task $dependency) => ['task' => $dependency->key(), 'title' => $dependency->title, 'status' => $dependency->status->value])->values()->all(),
             'instructions' => $task->comments->whereIn('kind', ['instruction', 'changes_requested'])->take(-10)->map->only(['kind', 'body'])->values()->all(),
-            'skills' => $skills->map(fn (SkillVersion $skill) => ['id' => $skill->id, 'version' => $skill->version, 'responsibilities' => $skill->responsibilities, 'rules' => $skill->rules, 'forbidden_actions' => $skill->forbidden_actions, 'validation_expectations' => $skill->validation_expectations])->all(),
-            'capabilities' => ['source_content_available' => false, 'repository_writes_available' => false, 'test_execution_available' => false, 'note' => 'Phase 6 provides index metadata only. Repository tools are mediated by the Local Runner in Phase 7.'],
+            'skills' => $this->skills($skills),
+            'capabilities' => ['source_content_available' => false, 'repository_writes_available' => false, 'test_execution_available' => false, 'note' => 'Planning works from index metadata only. Implementation and review runs receive file contents and tool results.'],
         ]);
+    }
+
+    /**
+     * The skill versions a run recorded (§37–38).
+     *
+     * @param  Collection<int, SkillVersion>  $skills
+     * @return list<array<string, mixed>>
+     */
+    public function skills(Collection $skills): array
+    {
+        return $skills->map(fn (SkillVersion $skill) => ['id' => $skill->id, 'version' => $skill->version, 'responsibilities' => $skill->responsibilities, 'rules' => $skill->rules, 'forbidden_actions' => $skill->forbidden_actions, 'validation_expectations' => $skill->validation_expectations])->values()->all();
     }
 }

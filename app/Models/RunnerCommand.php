@@ -29,6 +29,7 @@ class RunnerCommand extends Model
             'lease_expires_at' => 'datetime',
             'completed_at' => 'datetime',
             'expires_at' => 'datetime',
+            'cancel_requested_at' => 'datetime',
         ];
     }
 
