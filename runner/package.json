@@ -1,0 +1,17 @@
+{
+    "name": "@eaj/local-runner",
+    "version": "0.1.0",
+    "description": "EAJ Local Runner — the only component that touches local project files and Git for EAJ AI Dev Studio.",
+    "private": true,
+    "type": "module",
+    "bin": {
+        "eaj-runner": "./bin/eaj-runner.js"
+    },
+    "engines": {
+        "node": ">=18.18"
+    },
+    "scripts": {
+        "test": "node --test \"test/*.test.js\"",
+        "typecheck": "tsc -p jsconfig.json"
+    }
+}

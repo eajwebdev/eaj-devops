@@ -1,0 +1,57 @@
+/*
+ * EAJ design tokens (Plan §7.2–7.3).
+ *
+ * The ONLY file allowed to contain colour literals. Everything else references
+ * these tokens (Tailwind utilities such as bg-navy-800 / text-crimson-500, or
+ * var(--color-…)). Sampled from the EAJ logo: navy #0A1034, crimson #D61A5C.
+ */
+@theme {
+    --color-brand-navy: #0a1034;
+    --color-brand-crimson: #d61a5c;
+    --color-brand-white: #ffffff;
+
+    --color-navy-950: #050820;
+    --color-navy-900: #0a1034;
+    --color-navy-850: #0f1641;
+    --color-navy-800: #141c4d;
+    --color-navy-700: #1e2862;
+    --color-navy-600: #2b367a;
+    --color-navy-500: #404c95;
+    --color-navy-400: #6470b0;
+    --color-navy-300: #8f98c9;
+    --color-navy-200: #bcc2e2;
+    --color-navy-100: #e3e6f4;
+    --color-navy-50: #f4f5fb;
+
+    --color-crimson-50: #fdf1f5;
+    --color-crimson-100: #fbdde7;
+    --color-crimson-200: #f6b3ca;
+    --color-crimson-300: #ef7fa6;
+    --color-crimson-400: #e64a82;
+    --color-crimson-500: #d61a5c;
+    --color-crimson-600: #b5134c;
+    --color-crimson-700: #8f0f3c;
+    --color-crimson-800: #6a0b2d;
+
+    /* Semantic status — kept distinct from crimson, which means brand / "working". */
+    --color-success: #22c55e;
+    --color-warning: #f5a524;
+    --color-danger: #f04438;
+    --color-info: #38bdf8;
+
+    --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+    --font-display: 'Montserrat', 'Inter Variable', ui-sans-serif, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+    --dur-instant: 100ms;
+    --dur-fast: 160ms;
+    --dur-base: 240ms;
+    --dur-slow: 400ms;
+}

@@ -1,0 +1,451 @@
+@import 'tailwindcss';
+@import './tokens.css';
+
+@plugin 'tailwindcss-animate';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+
+@custom-variant dark (&:is(.dark *));
+
+/* Semantic colours used by the UI primitives, mapped onto EAJ tokens below. */
+@theme inline {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+
+    --color-heading: var(--heading);
+    --color-brand-text: var(--brand-text);
+
+    --color-sidebar: var(--sidebar-background);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* Light mode (fully supported; dark is the default — Plan §6). */
+:root {
+    --background: var(--color-navy-50);
+    --foreground: var(--color-navy-900);
+    --heading: var(--color-navy-900);
+    --card: var(--color-brand-white);
+    --card-foreground: var(--color-navy-900);
+    --popover: var(--color-brand-white);
+    --popover-foreground: var(--color-navy-900);
+    --primary: var(--color-crimson-600);
+    --primary-foreground: var(--color-brand-white);
+    --secondary: var(--color-navy-100);
+    --secondary-foreground: var(--color-navy-900);
+    --muted: var(--color-navy-50);
+    --muted-foreground: var(--color-navy-500);
+    --accent: var(--color-navy-100);
+    --accent-foreground: var(--color-navy-900);
+    --destructive: var(--color-danger);
+    --destructive-foreground: var(--color-brand-white);
+    --border: var(--color-navy-100);
+    --input: var(--color-navy-100);
+    --ring: var(--color-crimson-600);
+    /* Crimson text on white uses crimson-600 for contrast (Plan §7.2). */
+    --brand-text: var(--color-crimson-600);
+    --mark-letter: var(--color-navy-900);
+    --radius: var(--radius-md);
+
+    --sidebar-background: var(--color-brand-white);
+    --sidebar-foreground: var(--color-navy-700);
+    --sidebar-primary: var(--color-crimson-600);
+    --sidebar-primary-foreground: var(--color-brand-white);
+    --sidebar-accent: var(--color-navy-50);
+    --sidebar-accent-foreground: var(--color-navy-900);
+    --sidebar-border: var(--color-navy-100);
+    --sidebar-ring: var(--color-crimson-600);
+}
+
+.dark {
+    --background: var(--color-navy-900);
+    --foreground: var(--color-navy-200);
+    --heading: var(--color-brand-white);
+    --card: var(--color-navy-800);
+    --card-foreground: var(--color-navy-200);
+    --popover: var(--color-navy-800);
+    --popover-foreground: var(--color-navy-200);
+    --primary: var(--color-crimson-500);
+    --primary-foreground: var(--color-brand-white);
+    --secondary: var(--color-navy-700);
+    --secondary-foreground: var(--color-navy-100);
+    --muted: var(--color-navy-850);
+    --muted-foreground: var(--color-navy-300);
+    --accent: var(--color-navy-700);
+    --accent-foreground: var(--color-brand-white);
+    --destructive: var(--color-danger);
+    --destructive-foreground: var(--color-brand-white);
+    --border: var(--color-navy-700);
+    --input: var(--color-navy-600);
+    --ring: var(--color-crimson-500);
+    --brand-text: var(--color-crimson-400);
+    --mark-letter: var(--color-brand-white);
+
+    --sidebar-background: var(--color-navy-850);
+    --sidebar-foreground: var(--color-navy-200);
+    --sidebar-primary: var(--color-crimson-500);
+    --sidebar-primary-foreground: var(--color-brand-white);
+    --sidebar-accent: var(--color-navy-800);
+    --sidebar-accent-foreground: var(--color-brand-white);
+    --sidebar-border: var(--color-navy-800);
+    --sidebar-ring: var(--color-crimson-500);
+}
+
+@layer base {
+    *,
+    ::after,
+    ::before,
+    ::backdrop,
+    ::file-selector-button {
+        border-color: var(--border);
+    }
+
+    body {
+        @apply bg-background text-foreground font-sans antialiased;
+    }
+
+    h1,
+    h2,
+    h3 {
+        color: var(--heading);
+    }
+
+    /* Dashboard numbers never jitter as they change (Plan §7.3). */
+    .tabular {
+        font-variant-numeric: tabular-nums;
+    }
+}
+
+@layer components {
+    /* Wordmark style — only for the lockup, page eyebrows and section labels (Plan §7.3). */
+    .eyebrow {
+        font-family: var(--font-display);
+        font-size: 0.6875rem;
+        font-weight: 600;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--muted-foreground);
+    }
+
+    /* The logo's underline rule becomes the thin crimson divider under page titles. */
+    .brand-rule {
+        display: block;
+        width: 2.5rem;
+        height: 2px;
+        border-radius: 1px;
+        background: var(--color-brand-crimson);
+    }
+
+    /* The logo's diagonal cut: a 2px slanted crimson edge on active items. */
+    .brand-edge {
+        position: relative;
+    }
+    .brand-edge::before {
+        content: '';
+        position: absolute;
+        inset-block: 6px;
+        left: 0;
+        width: 3px;
+        background: var(--color-brand-crimson);
+        clip-path: polygon(0 12%, 100% 0, 100% 88%, 0 100%);
+    }
+
+    /* Faint EA watermark for empty states only — never on working screens. */
+    .eaj-watermark {
+        position: absolute;
+        right: -1.5rem;
+        bottom: -1.5rem;
+        width: 9rem;
+        height: 9rem;
+        opacity: 0.03;
+        pointer-events: none;
+        color: var(--heading);
+    }
+
+    .skeleton {
+        position: relative;
+        overflow: hidden;
+        border-radius: var(--radius-sm);
+        background: var(--muted);
+    }
+    .dark .skeleton {
+        background: var(--color-navy-800);
+    }
+    .skeleton::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        transform: translateX(-100%);
+        background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--color-navy-700) 70%, transparent), transparent);
+        animation: eaj-shimmer 1.4s var(--ease-in-out) infinite;
+    }
+}
+
+/*
+ * Motion system (Plan §7.6). Motion means real work: components only apply
+ * these classes while their persisted state is active. Only transform and
+ * opacity are animated. Loops are tagged data-motion="loop" so they can be
+ * paused when the tab is hidden and removed under reduced motion.
+ */
+@keyframes eaj-orbit {
+    to {
+        transform: rotate(360deg);
+    }
+}
+@keyframes eaj-breathe {
+    0%,
+    100% {
+        opacity: 0.55;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+@keyframes eaj-scan {
+    from {
+        transform: translateX(-100%);
+    }
+    to {
+        transform: translateX(100%);
+    }
+}
+@keyframes eaj-shimmer {
+    to {
+        transform: translateX(100%);
+    }
+}
+@keyframes eaj-ping {
+    0% {
+        transform: scale(1);
+        opacity: 0.6;
+    }
+    100% {
+        transform: scale(2.4);
+        opacity: 0;
+    }
+}
+@keyframes eaj-attention {
+    0%,
+    100% {
+        transform: scale(1);
+    }
+    40% {
+        transform: scale(1.12);
+    }
+}
+@keyframes eaj-shake {
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+    20%,
+    60% {
+        transform: translateX(-3px);
+    }
+    40%,
+    80% {
+        transform: translateX(3px);
+    }
+}
+@keyframes eaj-draw {
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+@keyframes eaj-fill-in {
+    to {
+        fill-opacity: 1;
+    }
+}
+@keyframes eaj-fade-in {
+    to {
+        opacity: 1;
+    }
+}
+@keyframes eaj-trace {
+    to {
+        stroke-dashoffset: -100;
+    }
+}
+
+.motion-orbit {
+    animation: eaj-orbit 1.6s linear infinite;
+}
+.motion-breathe {
+    animation: eaj-breathe 2.4s var(--ease-in-out) infinite;
+}
+.motion-scan {
+    animation: eaj-scan 1.4s var(--ease-in-out) infinite;
+}
+.motion-ping {
+    animation: eaj-ping 1.6s var(--ease-out) infinite;
+}
+.motion-attention {
+    animation: eaj-attention 400ms var(--ease-out) 1;
+}
+.motion-shake {
+    animation: eaj-shake 150ms linear 2;
+}
+/* Agent rings (§7.6): reviewing orbits at half speed, queued dashes rotate slowly. */
+.motion-orbit-slow {
+    animation: eaj-orbit 3.2s linear infinite;
+}
+.motion-dash {
+    animation: eaj-orbit 6s linear infinite;
+}
+@keyframes eaj-glow {
+    0%,
+    100% {
+        opacity: 0.25;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+.motion-glow {
+    animation: eaj-glow 2.4s var(--ease-in-out) infinite;
+}
+/* One-time check-mark draw when an agent completes (400ms). */
+.motion-draw {
+    stroke-dasharray: 24;
+    stroke-dashoffset: 24;
+    animation: eaj-draw 400ms var(--ease-out) forwards;
+}
+/* A file name cross-fades in on each read event. */
+.motion-fade {
+    animation: eaj-fade-from 240ms var(--ease-out);
+}
+@keyframes eaj-fade-from {
+    from {
+        opacity: 0;
+    }
+}
+
+/* Pause every loop while the tab is hidden. */
+html.tab-hidden [data-motion='loop'],
+html.tab-hidden .skeleton::after {
+    animation-play-state: paused;
+}
+
+/* Reduced motion: replace loops with static state, keep only short fades. */
+@media (prefers-reduced-motion: reduce) {
+    [data-motion='loop'],
+    .skeleton::after,
+    .motion-attention,
+    .motion-shake {
+        animation: none !important;
+    }
+}
+html.reduce-motion [data-motion='loop'],
+html.reduce-motion .skeleton::after,
+html.reduce-motion .motion-attention,
+html.reduce-motion .motion-shake {
+    animation: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+    .motion-draw,
+    .motion-fade {
+        animation: none !important;
+        stroke-dashoffset: 0;
+    }
+}
+html.reduce-motion .motion-draw,
+html.reduce-motion .motion-fade {
+    animation: none !important;
+    stroke-dashoffset: 0;
+}
+
+/*
+ * Branded splash (Plan §7.7): rendered by app.blade.php, shown only when boot
+ * takes longer than 300ms, removed as soon as React mounts.
+ */
+#eaj-splash {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    background: var(--color-navy-900);
+    opacity: 0;
+    animation: eaj-fade-in 200ms var(--ease-out) 300ms forwards;
+}
+#eaj-splash .splash-e,
+#eaj-splash .splash-a {
+    stroke-width: 1.25;
+    stroke-dasharray: 160;
+    stroke-dashoffset: 160;
+    fill-opacity: 0;
+}
+#eaj-splash .splash-e {
+    stroke: var(--color-brand-white);
+    fill: var(--color-brand-white);
+    animation:
+        eaj-draw 600ms var(--ease-in-out) 300ms forwards,
+        eaj-fill-in 300ms var(--ease-out) 900ms forwards;
+}
+#eaj-splash .splash-a {
+    stroke: var(--color-brand-crimson);
+    fill: var(--color-brand-crimson);
+    animation:
+        eaj-draw 600ms var(--ease-in-out) 600ms forwards,
+        eaj-fill-in 300ms var(--ease-out) 1200ms forwards;
+}
+#eaj-splash .splash-wordmark {
+    font-family: var(--font-display);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--color-navy-200);
+    opacity: 0;
+    animation: eaj-fade-in 400ms var(--ease-out) 1000ms forwards;
+}
+#eaj-splash .splash-wordmark b {
+    color: var(--color-brand-crimson);
+    font-weight: 700;
+}
+@media (prefers-reduced-motion: reduce) {
+    #eaj-splash .splash-e,
+    #eaj-splash .splash-a {
+        animation: none;
+        stroke-dashoffset: 0;
+        fill-opacity: 1;
+    }
+    #eaj-splash .splash-wordmark {
+        animation: none;
+        opacity: 1;
+    }
+}
